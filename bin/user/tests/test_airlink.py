@@ -225,6 +225,7 @@ class AirLinkTests(unittest.TestCase):
                           }, \
                   "error": null \
                  }')
+        data_structure_5_response = ('{"data": {"did": "001D0A1000AF", "name": "LusherClose Sheringham", "ts": 1601320120, "conditions": [{"lsid": 349639, "data_structure_type": 5, "temp": 59.0, "hum": 69.3, "dew_point": 48.9, "wet_bulb": 52.6, "heat_index": 58.1, "pm_1_last": 0, "pm_2p5_last": 0, "pm_10_last": 1, "pm_1": 0.61, "pm_2p5": 0.61, "pm_2p5_last_1_hour": 1.07, "pm_2p5_last_3_hours": 1.25, "pm_2p5_last_24_hours": 1.25, "pm_2p5_nowcast": 1.2, "pm_10p0": 3.3, "pm_10p0_last_1_hour": 1.9, "pm_10p0_last_3_hours": 2.52, "pm_10p0_last_24_hours": 2.52, "pm_10p0_nowcast": 2.27, "last_report_time": 1601320120, "pct_pm_data_last_1_hour": 100, "pct_pm_data_last_3_hours": 95, "pct_pm_data_nowcast": 23, "pct_pm_data_last_24_hours": 11}]}, "error": null}')
         bad = ('{ \
                   "data": { \
                            "did": "001D0A100214", \
@@ -266,6 +267,9 @@ class AirLinkTests(unittest.TestCase):
         j = json.loads(minimal)
         assert(user.airlink.is_sane(j))
         j = json.loads(good)
+        assert(user.airlink.is_sane(j))
+        j = json.loads(data_structure_5_response)
+        user.airlink.convert_data_structure_type_5_to_6(j)
         assert(user.airlink.is_sane(j))
         j = json.loads(bad)
         assert(not user.airlink.is_sane(j))

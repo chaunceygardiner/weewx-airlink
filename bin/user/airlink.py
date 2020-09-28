@@ -166,6 +166,25 @@ def is_type(j: Dict[str, Any], t, names: List[str], none_ok: bool = False) -> bo
         log.debug('is_type: exception: %s' % e)
         return False
 
+def convert_data_structure_type_5_to_6(j: Dict[str, Any]) -> None:
+    # Fix up these names and change data_structure_type to 6
+    try:
+        j['data']['conditions'][0]['pm_10'] = j['data']['conditions'][0]['pm_10p0']
+        j['data']['conditions'][0]['pm_10p0'] = None
+        j['data']['conditions'][0]['pm_10_last_1_hour'] = j['data']['conditions'][0]['pm_10p0_last_1_hour']
+        j['data']['conditions'][0]['pm_10p0_last_1_hour'] = None
+        j['data']['conditions'][0]['pm_10_last_3_hours'] = j['data']['conditions'][0]['pm_10p0_last_3_hours']
+        j['data']['conditions'][0]['pm_10p0_last_3_hours'] = None
+        j['data']['conditions'][0]['pm_10_last_24_hours'] = j['data']['conditions'][0]['pm_10p0_last_24_hours']
+        j['data']['conditions'][0]['pm_10p0_last_24_hours'] = None
+        j['data']['conditions'][0]['pm_10_nowcast'] = j['data']['conditions'][0]['pm_10p0_nowcast']
+        j['data']['conditions'][0]['pm_10p0_nowcast'] = None
+
+        j['data']['conditions'][0]['data_structure_type'] = 6
+    except Exception as e:
+        log.info('convert_data_structure_type_5_to_6: exception: %s' % e)
+        # Let sanity check handle the issue.
+
 def is_sane(j: Dict[str, Any]) -> bool:
     # { "data": { "did": "001D0A100214", "name": "airlink", "ts": 1601159588, "conditions": [{ "lsid": 349506, "data_structure_type": 6, "temp": 82.0, "hum": 42.8, "dew_point": 57.1, "wet_bulb": 62.8, "heat_index": 81.3, "pm_1_last": 1, "pm_2p5_last": 1, "pm_10_last": 2, "pm_1": 0.46, "pm_2p5": 0.55, "pm_2p5_last_1_hour": 1.65, "pm_2p5_last_3_hours": 0.58, "pm_2p5_last_24_hours": 0.77, "pm_2p5_nowcast": 0.90, "pm_10": 1.00, "pm_10_last_1_hour": 2.90, "pm_10_last_3_hours": 1.36, "pm_10_last_24_hours": 3.66, "pm_10_nowcast": 1.99, "last_report_time": 1601159588, "pct_pm_data_last_1_hour": 100, "pct_pm_data_last_3_hours": 100, "pct_pm_data_nowcast": 100, "pct_pm_data_last_24_hours": 100 }] }, "error": null }
     if j['error'] is not None:
@@ -235,6 +254,9 @@ def collect_data(hostname, port, timeout, archive_interval):
                 message = error['message']
                 log.info('%s returned error(%d): %s' % (url, code, message))
                 return None
+            # If data structure type 5, convert it to 6.
+            if j['data']['conditions'][0]['data_structure_type'] == 5:
+                convert_data_structure_type_5_to_6(j)
             # Check for sanity
             if not is_sane(j):
                 log.info('airlink reading not sane: %s' % j)

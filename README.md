@@ -66,16 +66,18 @@ If you don't meet the following requirements, do not install this extension.
    elsewhere, adjust the path of wee_extension accordingly.
 
 1. Edit the `AirLink` section of weewx.conf (which was created by the install
-   above).  AirLink sensors are specified with section names of `Sensor1`,
-   `Sensor2`, `Sensor3`, etc.  There is no limit on how many sensors can
-   be configured; but the numbering must be sonsecutive.  The order in which
-   sensors are interrogated is low numbers to high.  Once a sensor replies,
-   no further sensors are interrogated for the current polling round.
+   above).  In particular, change the hostname in the section labeled Sensor1 to
+   be a name resolvable to the IP address of the AirLink sensor or the IP address
+   of the AirLink sensors.  More sensors can be specified.  For example, to add
+   a second AirLink sensor, enable the Sensor2 section and specify the hostname.
+   There is no limit to how many sensors can be configured; but the numbering must
+   be sonsecutive.  The order in which sensors are interrogated is low numbers to
+   high.  Once a sensor replies, no further sensors are interrogated for the current
+   polling round.
 
    ```
    [AirLink]
-       data_binding = airlink_binding
-       [[Sensor]]
+       [[Sensor1]]
            enable = true
            hostname = airlink
            port = 80

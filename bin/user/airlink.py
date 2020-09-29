@@ -149,15 +149,14 @@ def get_concentrations(cfg: Configuration):
     log.error('Could not get concentrations from any source.')
     return None
 
-def is_type(j: Dict[str, Any], t, names: List[str], none_ok: bool = False) -> bool:
+def is_type(j: Dict[str, Any], t, name: str, none_ok: bool = False) -> bool:
     try:
-        for name in names:
-          x = j[name]
-          if x is None and none_ok:
-              return True
-          if not isinstance(x, t):
-              log.debug('%s is not an instance of %s: %s' % (name, t, j[name]))
-              return False
+        x = j[name]
+        if x is None and none_ok:
+            return True
+        if not isinstance(x, t):
+            log.debug('%s is not an instance of %s: %s' % (name, t, j[name]))
+            return False
         return True
     except KeyError as e:
         log.debug('is_type: could not find key: %s' % e)
@@ -181,56 +180,57 @@ def convert_data_structure_type_5_to_6(j: Dict[str, Any]) -> None:
         j['data']['conditions'][0]['pm_10p0_nowcast'] = None
 
         j['data']['conditions'][0]['data_structure_type'] = 6
+        log.debug('Converted type 5 record to type 6.')
     except Exception as e:
         log.info('convert_data_structure_type_5_to_6: exception: %s' % e)
         # Let sanity check handle the issue.
 
 def is_sane(j: Dict[str, Any]) -> bool:
-    # { "data": { "did": "001D0A100214", "name": "airlink", "ts": 1601159588, "conditions": [{ "lsid": 349506, "data_structure_type": 6, "temp": 82.0, "hum": 42.8, "dew_point": 57.1, "wet_bulb": 62.8, "heat_index": 81.3, "pm_1_last": 1, "pm_2p5_last": 1, "pm_10_last": 2, "pm_1": 0.46, "pm_2p5": 0.55, "pm_2p5_last_1_hour": 1.65, "pm_2p5_last_3_hours": 0.58, "pm_2p5_last_24_hours": 0.77, "pm_2p5_nowcast": 0.90, "pm_10": 1.00, "pm_10_last_1_hour": 2.90, "pm_10_last_3_hours": 1.36, "pm_10_last_24_hours": 3.66, "pm_10_nowcast": 1.99, "last_report_time": 1601159588, "pct_pm_data_last_1_hour": 100, "pct_pm_data_last_3_hours": 100, "pct_pm_data_nowcast": 100, "pct_pm_data_last_24_hours": 100 }] }, "error": null }
     if j['error'] is not None:
-        return False
+        return False, 'Error: %s' % j['error']
 
-    if not is_type(j, dict, ['data']):
-        return False
+    if not is_type(j, dict, 'data'):
+        return False, 'Missing or malformed "data" field'
 
-    if not is_type(j['data'], str, ['name']):
-        return False
+    if not is_type(j['data'], str, 'name'):
+        return False, 'Missing or malformed "name" field'
 
-    if not is_type(j['data'], int, ['ts']):
-        return False
+    if not is_type(j['data'], int, 'ts'):
+        return False, 'Missing or malformed "ts" field'
 
-    if not is_type(j['data'], list, ['conditions']):
-        return False
+    if not is_type(j['data'], list, 'conditions'):
+        return False, 'Missing or malformed "conditions" field'
 
     if len(j['data']['conditions']) == 0:
-        return False
+        return False, 'Expected one element in conditions array.'
 
-    if not is_type(j['data']['conditions'][0], int, ['data_structure_type']):
-        return False
+    if not is_type(j['data']['conditions'][0], int, 'data_structure_type'):
+        return False, 'Missing or malformed "data_structure_type" field'
 
     if j['data']['conditions'][0]['data_structure_type'] != 6:
-        log.info('Expected data_structure_type of 6, found %s' % j['data']['conditions'][0]['data_structure_type'])
-        return False
+        return False, 'Expected data_structure_type of 6 (or type 5 auto converted to 6.'
 
-    if not is_type(j['data']['conditions'][0], int, ['pm_1_last',
-            'pm_2p5_last', 'pm_10_last', 'last_report_time',
+    for name in ['pm_1_last', 'pm_2p5_last', 'pm_10_last', 'last_report_time',
             'pct_pm_data_last_1_hour', 'pct_pm_data_last_3_hours',
-            'pct_pm_data_nowcast', 'pct_pm_data_last_24_hours']):
-        return False
+            'pct_pm_data_nowcast', 'pct_pm_data_last_24_hours']:
+        if not is_type(j['data']['conditions'][0], int, name):
+            return False, 'Missing or malformed "%s" field' % name
 
-    if not is_type(j['data']['conditions'][0], int, ['lsid'], True):
-        return False
+    if not is_type(j['data']['conditions'][0], int, 'lsid', True):
+        return False, 'Missing or malformed "lsid" field'
 
-    if not is_type(j['data']['conditions'][0], float, ['temp', 'hum', 'dew_point', 'wet_bulb', 'heat_index']):
-        return False
+    for name in ['temp', 'hum', 'dew_point', 'wet_bulb', 'heat_index']:
+        if not is_type(j['data']['conditions'][0], float, name):
+            return False, 'Missing or malformed "%s" field' % name
 
-    if not is_type(j['data']['conditions'][0], float, ['pm_1', 'pm_2p5',
-             'pm_2p5_last_1_hour', 'pm_2p5_last_3_hours', 'pm_2p5_last_24_hours',
-             'pm_2p5_nowcast', 'pm_10', 'pm_10_last_1_hour', 'pm_10_last_3_hours',
-             'pm_10_last_24_hours', 'pm_10_nowcast'], True):
-        return False
+    for name in ['pm_1', 'pm_2p5', 'pm_2p5_last_1_hour',
+             'pm_2p5_last_3_hours', 'pm_2p5_last_24_hours', 'pm_2p5_nowcast',
+             'pm_10', 'pm_10_last_1_hour', 'pm_10_last_3_hours',
+             'pm_10_last_24_hours', 'pm_10_nowcast']:
+        if not is_type(j['data']['conditions'][0], float, name, True):
+            return False, 'Missing or malformed "%s" field' % name
 
-    return True
+    return True, ''
 
 def collect_data(hostname, port, timeout, archive_interval):
 
@@ -258,8 +258,9 @@ def collect_data(hostname, port, timeout, archive_interval):
             if j['data']['conditions'][0]['data_structure_type'] == 5:
                 convert_data_structure_type_5_to_6(j)
             # Check for sanity
-            if not is_sane(j):
-                log.info('airlink reading not sane: %s' % j)
+            sane, msg = is_sane(j)
+            if not sane:
+                log.info('Reading not sane:  %s (%s)' % (msg, j))
                 return None
             time_of_reading = j['data']['conditions'][0]['last_report_time']
             # The reading could be old.

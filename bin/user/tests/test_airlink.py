@@ -187,6 +187,18 @@ class AirLinkTests(unittest.TestCase):
                           }, \
                   "error": null \
                  }')
+        observed_packet_with_pct_fields_of_none = ('{"data": {"did": "001D0A100214", \
+            "name": "airlink", "ts": 1601491799, "conditions": [{"lsid": 349506, \
+            "data_structure_type": 6, "temp": 71.9, "hum": 70.1, "dew_point": 61.6, \
+            "wet_bulb": 64.5, "heat_index": 72.5, "pm_1_last": 15, "pm_2p5_last": 24, \
+            "pm_10_last": 27, "pm_1": null, "pm_2p5": null, "pm_2p5_last_1_hour": null, \
+            "pm_2p5_last_3_hours": null, "pm_2p5_last_24_hours": null, \
+            "pm_2p5_nowcast": null, "pm_10": null, "pm_10_last_1_hour": null, \
+            "pm_10_last_3_hours": null, "pm_10_last_24_hours": null, \
+            "pm_10_nowcast": null, "last_report_time": 1601491799, \
+            "pct_pm_data_last_1_hour": null, "pct_pm_data_last_3_hours": null, \
+            "pct_pm_data_nowcast": null, "pct_pm_data_last_24_hours": null \
+            }]}, "error": null}')
         good = ('{ \
                   "data": { \
                            "did": "001D0A100214", \
@@ -266,6 +278,9 @@ class AirLinkTests(unittest.TestCase):
                   "error": null \
                  }')
         j = json.loads(minimal)
+        sane, _ = user.airlink.is_sane(j)
+        assert(sane)
+        j = json.loads(observed_packet_with_pct_fields_of_none)
         sane, _ = user.airlink.is_sane(j)
         assert(sane)
         j = json.loads(good)

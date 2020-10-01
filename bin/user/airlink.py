@@ -213,7 +213,7 @@ def is_sane(j: Dict[str, Any]) -> bool:
     for name in ['pm_1_last', 'pm_2p5_last', 'pm_10_last', 'last_report_time',
             'pct_pm_data_last_1_hour', 'pct_pm_data_last_3_hours',
             'pct_pm_data_nowcast', 'pct_pm_data_last_24_hours']:
-        if not is_type(j['data']['conditions'][0], int, name):
+        if not is_type(j['data']['conditions'][0], int, name, True):
             return False, 'Missing or malformed "%s" field' % name
 
     if not is_type(j['data']['conditions'][0], int, 'lsid', True):

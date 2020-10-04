@@ -660,7 +660,7 @@ class AQI(weewx.xtypes.XType):
                                            aggregate_interval)
         else:
             # No aggregation.
-            sql_str = 'SELECT dateTime, usUnits, interval, pm2_5 FROM %s ' \
+            sql_str = 'SELECT dateTime, usUnits, `interval`, pm2_5 FROM %s ' \
                       'WHERE dateTime >= ? AND dateTime <= ? AND pm2_5 IS NOT NULL' \
                       % db_manager.table_name
             std_unit_system = None

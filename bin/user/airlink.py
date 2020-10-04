@@ -26,7 +26,7 @@ import threading
 import time
 
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import weeutil.weeutil
 import weewx
@@ -185,7 +185,7 @@ def convert_data_structure_type_5_to_6(j: Dict[str, Any]) -> None:
         log.info('convert_data_structure_type_5_to_6: exception: %s' % e)
         # Let sanity check handle the issue.
 
-def is_sane(j: Dict[str, Any]) -> bool:
+def is_sane(j: Dict[str, Any]) -> Tuple[bool, str]:
     if j['error'] is not None:
         return False, 'Error: %s' % j['error']
 

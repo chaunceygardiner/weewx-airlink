@@ -44,28 +44,8 @@
 #set $rgbcolor = 'rgb(%d,%d,%d)' % ($red, $green, $blue)
 <!-- $rgbint $red $green $blue -->
       <div>$obs.label.pm2_5_aqi: <span style='color:$rgbcolor;'>$current.pm2_5_aqi</span></div>
-##
-## pm2.5_lrapa_aqi
-#set $rgbint = int($current.pm2_5_lrapa_aqi_color.raw)
-#set $red   = ($rgbint >> 16) & 255
-#set $green = ($rgbint >>  8) & 255
-#set $blue  =  $rgbint        & 255
-#set $rgbcolor = 'rgb(%d,%d,%d)' % ($red, $green, $blue)
-<!-- $rgbint $red $green $blue -->
-      <div>$obs.label.pm2_5_lrapa_aqi: <span style='color:$rgbcolor;'>$current.pm2_5_lrapa_aqi</span></div>
-##
-## pm2.5_unbc_aqi
-#set $rgbint = int($current.pm2_5_unbc_aqi_color.raw)
-#set $red   = ($rgbint >> 16) & 255
-#set $green = ($rgbint >>  8) & 255
-#set $blue  =  $rgbint        & 255
-#set $rgbcolor = 'rgb(%d,%d,%d)' % ($red, $green, $blue)
-<!-- $rgbint $red $green $blue -->
-      <div>$obs.label.pm2_5_unbc_aqi: <span style='color:$rgbcolor;'>$current.pm2_5_unbc_aqi</span></div>
 #else
       <div>$obs.label.pm2_5_aqi: <span style='color:gray;'>Unavailable</span></div>
-      <div>$obs.label.pm2_5_lrapa_aqi: <span style='color:gray;'>Unavailable</span></div>
-      <div>$obs.label.pm2_5_unbc_aqi: <span style='color:gray;'>Unavailable</span></div>
 #end if
     </div>
     <br/>
@@ -90,14 +70,6 @@
           <img src="dayaqi.png" $graph_width alt="$obs.label.pm2_5_aqi"/>
           <img src="daypm2_5.png" $graph_width alt="$obs.label.pm2_5"/>
         </div>
-        <div>
-          <img src="dayaqi_lrapa.png" $graph_width alt="$obs.label.pm2_5_lrapa_aqi"/>
-          <img src="daypm2_5_lrapa.png" $graph_width alt="$obs.label.pm2_5_lrapa"/>
-        </div>
-        <div>
-          <img src="dayaqi_unbc.png" $graph_width alt="$obs.label.pm2_5_unbc_aqi"/>
-          <img src="daypm2_5_unbc.png" $graph_width alt="$obs.label.pm2_5_unbc"/>
-        </div>
       </div>
     </div>
     <div id="week_block" style="display:none;text-align:center;">
@@ -105,14 +77,6 @@
         <div>
           <img src="weekaqi.png" $graph_width alt="$obs.label.pm2_5_aqi"/>
           <img src="weekpm2_5.png" $graph_width alt="$obs.label.pm2_5"/>
-        </div>
-        <div>
-          <img src="weekaqi_lrapa.png" $graph_width alt="$obs.label.pm2_5_lrapa_aqi"/>
-          <img src="weekpm2_5_lrapa.png" $graph_width alt="$obs.label.pm2_5_lrapa"/>
-        </div>
-        <div>
-          <img src="weekaqi_unbc.png" $graph_width alt="$obs.label.pm2_5_unbc_aqi"/>
-          <img src="weekpm2_5_unbc.png" $graph_width alt="$obs.label.pm2_5_unbc"/>
         </div>
       </div>
     </div>
@@ -122,14 +86,6 @@
           <img src="monthaqi.png" $graph_width alt="$obs.label.pm2_5_aqi"/>
           <img src="monthpm2_5.png" $graph_width alt="$obs.label.pm2_5"/>
         </div>
-        <div>
-          <img src="monthaqi_lrapa.png" $graph_width alt="$obs.label.pm2_5_lrapa_aqi"/>
-          <img src="monthpm2_5_lrapa.png" $graph_width alt="$obs.label.pm2_5_lrapa"/>
-        </div>
-        <div>
-          <img src="monthaqi_unbc.png" $graph_width alt="$obs.label.pm2_5_unbc_aqi"/>
-          <img src="monthpm2_5_unbc.png" $graph_width alt="$obs.label.pm2_5_unbc"/>
-        </div>
       </div>
     </div>
     <div id="year_block" style="display:none;text-align:center;">
@@ -137,14 +93,6 @@
         <div>
           <img src="yearaqi.png" $graph_width alt="$obs.label.pm2_5_aqi"/>
           <img src="yearpm2_5.png" $graph_width alt="$obs.label.pm2_5"/>
-        </div>
-        <div>
-          <img src="yearaqi_lrapa.png" $graph_width alt="$obs.label.pm2_5_lrapa_aqi"/>
-          <img src="yearpm2_5_lrapa.png" $graph_width alt="$obs.label.pm2_5_lrapa"/>
-        </div>
-        <div>
-          <img src="yearaqi_unbc.png" $graph_width alt="$obs.label.pm2_5_unbc_aqi"/>
-          <img src="yearpm2_5_unbc.png" $graph_width alt="$obs.label.pm2_5_unbc"/>
         </div>
       </div>
     </div>

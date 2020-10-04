@@ -29,11 +29,12 @@ is the [RGBint](https://www.shodor.org/stella2java/rgbint.html) value
 `$current.pm2_5_aqi_color` (useful for displaying AQI in the appropriate color
 (e.g., green for AQIs <= 50).
 
-Lastly, PM2.5 concentrations and AQI are available with LRAPA and UNBC corrections for
-reports (e.g., `$current.pm2_5_lrapa_aqi`, `$current.pm2_5_unbc_aqi`)
-and graphs (e.g., `[[[[pm2_5_lrapa_aqi]]]` and `[[[[pm2_5_unbc_aqi]]]`)
+PM2.5 concentrations are corrected with the US EPA correction for PurpleAir sensors.
+This somewhat presumptious decision was prompted by the observation that the AirLink
+sensor tracks to remarkably well with a same positioned PurpleAir sensor.  Take this
+observation (sample size == 1) with a grain of salt.
 
-The above fields for reporting and graphs, the following additional
+The above fields are for reporting and graphs, the following additional
 fields are inserted into loop redcords (useful for real time updating):
 `pm1_0_1m`: PM1 1 minute average
 `pm2_5_1m`: PM2.5 1 minute average
@@ -114,43 +115,6 @@ $current.pm2_5_aqi
 To get the RGBINT color of the current Air Quality Index:
 ```
 #set $color = int($current.pm2_5_aqi_color.raw)
-#set $blue  =  $color & 255
-#set $green = ($color >> 8) & 255
-#set $red   = ($color >> 16) & 255
-```
-
-To show the PM2.5 reading with LRAPA (Lane Regional Air Protection Agency)
-conversion, use the following:
-```
-$current.pm2_5_lrapa
-```
-
-To show the LRAPA Air Quality Index:
-```
-$current.pm2_5_lrapa_aqi
-```
-
-To get the RGBINT color of the current LRAPA Air Quality Index:
-```
-#set $color = int($current.pm2_5_lrapa_aqi_color.raw)
-#set $blue  =  $color & 255
-#set $green = ($color >> 8) & 255
-#set $red   = ($color >> 16) & 255
-
-To show the PM2.5 reading with UNBC (University of Northern British Columbia)
-conversion, use the following:
-```
-$current.pm2_5_unbc
-```
-
-To show the UNBC Air Quality Index:
-```
-$current.pm2_5_unbc_aqi
-```
-
-To get the RGBINT color of the current UNBC Air Quality Index:
-```
-#set $color = int($current.pm2_5_unbc_aqi_color.raw)
 #set $blue  =  $color & 255
 #set $green = ($color >> 8) & 255
 #set $red   = ($color >> 16) & 255

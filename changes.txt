@@ -1,6 +1,23 @@
 weewx-airlink change history
 ----------------------------
 
+0.2 10/??/2020
+--------------
+Switch to US EPA correction for PM2.5.  This correction is
+always applied.  The US EPA correction is meant for PurpleAir sensors,
+but (anecdotally), AirLink tracks well to PurpleAir sensors.
+Remove LRAPA and UNBC corrections.
+
+Note: It is not possible to store the raw PM2.5 value and apply the
+US EPA correction using xtypes.  The reason for this is because
+the US EPA formula requires relative humidity and temperature AS
+MEASURED BY the AirLink device.  These measurements are not avaible
+in the database.  Supporting conversion on the fly would require
+adding columns to the WeeWX archive table or require a separate
+database.  A key feature of this extension is that it does not
+require either of these.
+
+
 0.1 09/26/2020
 --------------
 Initial check-in.

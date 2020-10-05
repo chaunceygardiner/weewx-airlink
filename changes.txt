@@ -16,6 +16,11 @@ in the database.  Supporting conversion on the fly would require
 adding columns to the WeeWX archive table or require a separate
 database.  A key feature of this extension is that it does not
 require either of these.
+TODO: Perhaps use extraTempX/extraHumidX columns to store AirLink
+temp and humidity fields.  If so, it will still be problematic to
+find the highs and lows for the US EPA adjusted PM2.5 (It would
+not be a simple matter of finding the highest raw PM2.5.  All
+tuples would have to be evaluated.)
 
 
 0.1 09/26/2020

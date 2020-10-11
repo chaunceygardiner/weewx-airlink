@@ -261,9 +261,30 @@ def collect_data(hostname, port, timeout, archive_interval):
             # Check that it's not older than now - arcint
             age_of_reading = time.time() - time_of_reading
             if age_of_reading > archive_interval:
-                # Not current.
-                log.info('Ignoring reading from %s--age: %d seconds.'
-                         % (hostname, age_of_reading))
+                # Perhaps the AirLink has rebooted.  If so, the last_report_time
+                # will be seconds from boot time (until the device syncs
+                # time.  Check for this by checking if concentrations.pm_1
+                # is None.
+                if j['data']['conditions'][0]['pm_1'] is None:
+                    log.info('last_report_time must be time since boot: %d seconds.  Record: %s'
+                             % (time_of_reading, j))
+                else:
+                    # Not current.  (Note: Rarely, spurious timestamps (e.g., 2016 in 2020)
+                    # have been observed.  Both the ts and last_report_time fields are incorrect.
+                    # Example on Oct 10 21:11:38:
+                    # {'data': {'did': '001D0A100214', 'name': 'airlink', 'ts': 1461926887,
+                    # 'conditions': [{'lsid': 349506, 'data_structure_type': 6, 'temp': 67.7,
+                    # 'hum': 72.2, 'dew_point': 58.4, 'wet_bulb': 61.2, 'heat_index': 68.1,
+                    # 'pm_1_last': 0, 'pm_2p5_last': 0, 'pm_10_last': 0, 'pm_1': 0.0,
+                    # 'pm_2p5': 0.0, 'pm_2p5_last_1_hour': 0.13, 'pm_2p5_last_3_hours': 0.27,
+                    # 'pm_2p5_last_24_hours': 0.43, 'pm_2p5_nowcast': 0.23, 'pm_10': 1.09,
+                    # 'pm_10_last_1_hour': 0.64, 'pm_10_last_3_hours': 0.89,
+                    # 'pm_10_last_24_hours': 1.02, 'pm_10_nowcast': 0.84,
+                    # 'last_report_time': 1461926886, 'pct_pm_data_last_1_hour': 100,
+                    # 'pct_pm_data_last_3_hours': 100, 'pct_pm_data_nowcast': 100,
+                    # 'pct_pm_data_last_24_hours': 100}]}, 'error': None}
+                    log.info('Ignoring reading from %s--age: %d seconds.  Record: %s'
+                             % (hostname, age_of_reading, j))
                 j = None
     except Exception as e:
         log.info('collect_data: Attempt to fetch from: %s failed: %s.' % (hostname, e))
@@ -540,7 +561,7 @@ class AQI(weewx.xtypes.XType):
             return (255 << 16) + (255 << 8) # Yellow
         elif pm2_5_aqi <=  150:
             return (255 << 16) + (140 << 8) # Orange
-        elif pm2_5_aqi <= 200: 
+        elif pm2_5_aqi <= 200:
             return 255 << 16                # Red
         elif pm2_5_aqi <= 300:
             return (128 << 16) + 128        # Purple

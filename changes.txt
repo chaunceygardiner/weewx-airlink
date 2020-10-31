@@ -1,27 +1,31 @@
 weewx-airlink change history
 ----------------------------
 
-0.2 10/??/2020
+1.0 10/31/2020
 --------------
 Switch to US EPA correction for PM2.5.  This correction is
-always applied.  The US EPA correction is meant for PurpleAir sensors,
-but (anecdotally), AirLink tracks well to PurpleAir sensors.
-Remove LRAPA and UNBC corrections.
+always applied.  The US EPA correction is meant for PurpleAir sensors;
+however--in a sample size of 1, AirLink tracks well to PurpleAir sensors.
 
-Note: It is not possible to store the raw PM2.5 value and apply the
-US EPA correction using xtypes.  The reason for this is because
-the US EPA formula requires relative humidity and temperature AS
-MEASURED BY the AirLink device.  These measurements are not avaible
-in the database.  Supporting conversion on the fly would require
-adding columns to the WeeWX archive table or require a separate
-database.  A key feature of this extension is that it does not
-require either of these.
-TODO: Perhaps use extraTempX/extraHumidX columns to store AirLink
-temp and humidity fields.  If so, it will still be problematic to
-find the highs and lows for the US EPA adjusted PM2.5 (It would
-not be a simple matter of finding the highest raw PM2.5.  All
-tuples would have to be evaluated.)
+This release removes availability of the uncorrected PM2.5
+concentrations.  It also removes the LRAPA and UNBC corrections.
 
+The reason for this change is that the EPA correction needs the
+temperature and humidity as reported by the sensor.  These values
+are not saved by the extension, so it is not possible to construct
+the EPA corrected concentration later.  The extension could find an
+unused column in the schema to store the AirLink's temperature and
+humidity, but the author has deemed this more trouble than it is
+worth.  If the user doesn't like this change, please continue to
+use the 0.1 version of this extension.
+
+Please note that the value stored as PM2.5 (i.e., the EPA corrected
+value) is much better than the raw value, the LRAPA value and the
+UNBC value.  The EPA corrected concentration has been shown to
+result in the correct US EPA AQI category 92% of the time and only
+one off from the correct category 100% of the time.  This was
+true for all regions in the study (throughout the USA) and for
+all conditions (including wildfire smoke).
 
 0.1 09/26/2020
 --------------

@@ -5,7 +5,7 @@
 
 A WeeWX plugin that gets its AirLink sensor readings either directly
 from the AirLink sensor or from a
-[airlink-proxy](https://github.com/chaunceygardiner/weewx-airlink) service.
+[airlink-proxy](https://github.com/chaunceygardiner/airlink-proxy) service.
 
 Copyright (C)2020 by John A Kline (john@johnkline.com)
 
@@ -31,11 +31,12 @@ is the [RGBint](https://www.shodor.org/stella2java/rgbint.html) value
 
 PM2.5 concentrations are corrected with the US EPA correction for PurpleAir sensors.
 This somewhat presumptious decision was prompted by the observation that the AirLink
-sensor tracks to remarkably well with a same positioned PurpleAir sensor.  Take this
-observation (sample size == 1) with a grain of salt.
+sensor tracks remarkably well to a like positioned PurpleAir sensor.  Take this
+observation with a grain of salet (sample size == 1).
 
-The above fields are for reporting and graphs, the following additional
-fields are inserted into loop redcords (useful for real time updating):
+The `pm1_0`, `pm2_5`, `pm10_0`, 'pm2_5_aqi' and 'pm2_5_aqi_color' fields are
+available for reporting and graphs, the following additional
+fields are inserted into loop records (useful for real time updating):
 `pm1_0_1m`: PM1 1 minute average
 `pm2_5_1m`: PM2.5 1 minute average
 `pm10_0_1m`: PM10 1 minute average
@@ -56,25 +57,29 @@ If you don't meet the following requirements, do not install this extension.
   * Using WeeWX 4's new wview_extended schema.
   * Python 3.7 or greater
 
-1. Download the lastest release, weewx-airlink-0.1.zip, from the
+1. Download the lastest release, weewx-airlink-1.0.zip, from the
    [GitHub Repository](https://github.com/chaunceygardiner/weewx-airlink).
 
 1. Run the following command.
 
-   `sudo /home/weewx/bin/wee_extension --install weewx-airlink-0.1.zip`
+   `sudo /home/weewx/bin/wee_extension --install weewx-airlink-1.0.zip`
 
    Note: this command assumes weewx is installed in /home/weewx.  If it's installed
    elsewhere, adjust the path of wee_extension accordingly.
 
 1. Edit the `AirLink` section of weewx.conf (which was created by the install
    above).  In particular, change the hostname in the section labeled Sensor1 to
-   be a name resolvable to the IP address of the AirLink sensor or the IP address
-   of the AirLink sensors.  More sensors can be specified.  For example, to add
+   be a name resolvable to the IP address of an AirLink sensor or the IP address
+   of an AirLink sensor.  More sensors can be specified.  For example, to add
    a second AirLink sensor, enable the Sensor2 section and specify the hostname.
    There is no limit to how many sensors can be configured; but the numbering must
-   be sonsecutive.  The order in which sensors are interrogated is low numbers to
+   be consecutive.  The order in which sensors are interrogated is low numbers to
    high.  Once a sensor replies, no further sensors are interrogated for the current
    polling round.
+
+   Note: The port can be specified because this extension also works with the
+   [airlink-proxy](https://github.com/chaunceygardiner/airlink-proxy) service.
+   That service typcially uses port 8000.
 
    ```
    [AirLink]

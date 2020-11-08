@@ -591,7 +591,7 @@ class AQI(weewx.xtypes.XType):
         if record['pm2_5'] is None:
             # Returning CannotCalculate causes exception in ImageGenerator, return UnknownType instead.
             # ERROR weewx.reportengine: Caught unrecoverable exception in generator 'weewx.imagegenerator.ImageGenerator'
-            log.info('get_scalar called where record[pm2_5] is None.')
+            log.debug('get_scalar called where record[pm2_5] is None.')
             raise weewx.UnknownType(obs_type)
         try:
             pm2_5 = record['pm2_5']

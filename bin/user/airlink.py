@@ -403,36 +403,45 @@ class AirLink(StdService):
                     cfg.concentrations.timestamp is not None and \
                     cfg.concentrations.timestamp + \
                     cfg.archive_interval >= time.time():
-                # Insert pm1_0, pm2_5, pm10_0, aqi and aqic into loop packet.
-                packet['pm1_0'] = cfg.concentrations.pm_1_last
-                packet['pm2_5'] = AQI.compute_pm_2p5_us_epa_correction(
-                        cfg.concentrations.pm_2p5_last, cfg.concentrations.hum, cfg.concentrations.temp)
-                packet['pm10_0'] = cfg.concentrations.pm_10_last
                 log.debug('Time of reading being inserted: %s' % timestamp_to_string(cfg.concentrations.timestamp))
-                log.debug('Inserted packet[pm1_0]: %f into packet.' % cfg.concentrations.pm_1_last)
-                log.debug('Inserted packet[pm2_5]: %f into packet.' % cfg.concentrations.pm_2p5_last)
-                log.debug('Inserted packet[pm10_0]: %f into packet.' % cfg.concentrations.pm_10_last)
+                # Insert pm1_0, pm2_5, pm10_0, aqi and aqic into loop packet.
+                if cfg.concentrations.pm_1_last is not None:
+                    packet['pm1_0'] = cfg.concentrations.pm_1_last
+                    log.debug('Inserted packet[pm1_0]: %f into packet.' % cfg.concentrations.pm_1_last)
+                if (cfg.concentrations.pm_2p5_last is not None
+                        and cfg.concentrations.hum is not None
+                        and cfg.concentrations.temp is not None):
+                    packet['pm2_5'] = AQI.compute_pm_2p5_us_epa_correction(
+                            cfg.concentrations.pm_2p5_last, cfg.concentrations.hum, cfg.concentrations.temp)
+                    log.debug('Inserted packet[pm2_5]: %f into packet.' % cfg.concentrations.pm_2p5_last)
+                if cfg.concentrations.pm_10_last is not None:
+                    packet['pm10_0'] = cfg.concentrations.pm_10_last
+                    log.debug('Inserted packet[pm10_0]: %f into packet.' % cfg.concentrations.pm_10_last)
 
                 # Also insert one minute averages as these averages are more useful for showing in realtime.
                 # If 1m averages are not available, use last instead.
                 if cfg.concentrations.pm_1 is not None:
                     packet['pm1_0_1m']       = cfg.concentrations.pm_1
-                else:
+                elif cfg.concentrations.pm_1_last is not None:
                     packet['pm1_0_1m']       = cfg.concentrations.pm_1_last
                 if cfg.concentrations.pm_2p5 is not None:
                     packet['pm2_5_1m']       = AQI.compute_pm_2p5_us_epa_correction(
                             cfg.concentrations.pm_2p5, cfg.concentrations.hum, cfg.concentrations.temp)
-                else:
+                elif (cfg.concentrations.pm_2p5_last is not None
+                        and cfg.concentrations.hum is not None
+                        and cfg.concentrations.temp is not None):
                     packet['pm2_5_1m']       = AQI.compute_pm_2p5_us_epa_correction(
                             cfg.concentrations.pm_2p5_last, cfg.concentrations.hum, cfg.concentrations.temp)
                 if cfg.concentrations.pm_10 is not None:
                     packet['pm10_0_1m']      = cfg.concentrations.pm_10
-                else:
+                elif cfg.concentrations.pm_10_last is not None:
                     packet['pm10_0_1m']      = cfg.concentrations.pm_10_last
 
                 # Add 1m aqi and color
-                packet['pm2_5_1m_aqi'] = AQI.compute_pm2_5_aqi(packet['pm2_5_1m'])
-                packet['pm2_5_1m_aqi_color'] = AQI.compute_pm2_5_aqi_color(packet['pm2_5_1m_aqi'])
+                if 'pm2_5_1m' in packet:
+                    packet['pm2_5_1m_aqi'] = AQI.compute_pm2_5_aqi(packet['pm2_5_1m'])
+                if 'pm2_5_1m_aqi' in packet:
+                    packet['pm2_5_1m_aqi_color'] = AQI.compute_pm2_5_aqi_color(packet['pm2_5_1m_aqi'])
 
                 # Put aqi and color in the packet.
                 if cfg.concentrations.pm_2p5 is not None:
@@ -441,7 +450,9 @@ class AirLink(StdService):
 
                 # And insert nowcast for pm 2.5 and 10 as some might want to report that.
                 # If nowcast not available, don't substitute.
-                if cfg.concentrations.pm_2p5_nowcast is not None:
+                if (cfg.concentrations.pm_2p5_nowcast is not None
+                        and cfg.concentrations.hum is not None
+                        and cfg.concentrations.temp is not None):
                     packet['pm2_5_nowcast']  = AQI.compute_pm_2p5_us_epa_correction(
                             cfg.concentrations.pm_2p5_nowcast, cfg.concentrations.hum, cfg.concentrations.temp)
                     packet['pm2_5_nowcast_aqi'] = AQI.compute_pm2_5_aqi(packet['pm2_5_nowcast'])
@@ -586,12 +597,14 @@ class AQI(weewx.xtypes.XType):
         if 'pm2_5' not in record:
             # Returning CannotCalculate causes exception in ImageGenerator, return UnknownType instead.
             # ERROR weewx.reportengine: Caught unrecoverable exception in generator 'weewx.imagegenerator.ImageGenerator'
+            # TODO: Change log.info to log.debug after verifying this is logged when pm2_5 not in record.
             log.info('get_scalar called where record does not contain pm2_5.')
             raise weewx.UnknownType(obs_type)
         if record['pm2_5'] is None:
             # Returning CannotCalculate causes exception in ImageGenerator, return UnknownType instead.
             # ERROR weewx.reportengine: Caught unrecoverable exception in generator 'weewx.imagegenerator.ImageGenerator'
-            log.debug('get_scalar called where record[pm2_5] is None.')
+            # Should not happen as the extension should not insert pm2_5 if it is None.
+            log.info('get_scalar called where record[pm2_5] is None.')
             raise weewx.UnknownType(obs_type)
         try:
             pm2_5 = record['pm2_5']

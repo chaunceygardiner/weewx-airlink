@@ -351,7 +351,7 @@ def populate_record(ts, j):
     return record
 
 class AirLink(StdService):
-    """Collect AirLink Air air quality measurements."""
+    """Collect AirLink air quality measurements."""
 
     def __init__(self, engine, config_dict):
         super(AirLink, self).__init__(engine, config_dict)
@@ -414,6 +414,9 @@ class AirLink(StdService):
                     packet['pm2_5'] = AQI.compute_pm_2p5_us_epa_correction(
                             cfg.concentrations.pm_2p5_last, cfg.concentrations.hum, cfg.concentrations.temp)
                     log.debug('Inserted packet[pm2_5]: %f into packet.' % cfg.concentrations.pm_2p5_last)
+                    # Put aqi and color in the packet.
+                    packet['pm2_5_aqi'] = AQI.compute_pm2_5_aqi(packet['pm2_5'])
+                    packet['pm2_5_aqi_color'] = AQI.compute_pm2_5_aqi_color(packet['pm2_5_aqi'])
                 if cfg.concentrations.pm_10_last is not None:
                     packet['pm10_0'] = cfg.concentrations.pm_10_last
                     log.debug('Inserted packet[pm10_0]: %f into packet.' % cfg.concentrations.pm_10_last)
@@ -440,13 +443,7 @@ class AirLink(StdService):
                 # Add 1m aqi and color
                 if 'pm2_5_1m' in packet:
                     packet['pm2_5_1m_aqi'] = AQI.compute_pm2_5_aqi(packet['pm2_5_1m'])
-                if 'pm2_5_1m_aqi' in packet:
                     packet['pm2_5_1m_aqi_color'] = AQI.compute_pm2_5_aqi_color(packet['pm2_5_1m_aqi'])
-
-                # Put aqi and color in the packet.
-                if cfg.concentrations.pm_2p5 is not None:
-                    packet['pm2_5_aqi'] = AQI.compute_pm2_5_aqi(packet['pm2_5'])
-                    packet['pm2_5_aqi_color'] = AQI.compute_pm2_5_aqi_color(packet['pm2_5_aqi'])
 
                 # And insert nowcast for pm 2.5 and 10 as some might want to report that.
                 # If nowcast not available, don't substitute.
@@ -460,7 +457,7 @@ class AirLink(StdService):
                 if cfg.concentrations.pm_10_nowcast is not None:
                     packet['pm10_0_nowcast'] = cfg.concentrations.pm_10_nowcast
             else:
-                log.error('Found no fresh concentrations to insert.')
+                log.error('Found no concentrations to insert.')
 
     def configure_sources(config_dict):
         sources = []
@@ -595,16 +592,17 @@ class AQI(weewx.xtypes.XType):
             log.debug('get_scalar called where record is None.')
             raise weewx.CannotCalculate(obs_type)
         if 'pm2_5' not in record:
+            # Should not see this as pm2_5 is part of the extended schema that is required for this plugin.
             # Returning CannotCalculate causes exception in ImageGenerator, return UnknownType instead.
             # ERROR weewx.reportengine: Caught unrecoverable exception in generator 'weewx.imagegenerator.ImageGenerator'
-            # TODO: Change log.info to log.debug after verifying this is logged when pm2_5 not in record.
-            log.info('get_scalar called where record does not contain pm2_5.')
+            log.info('get_scalar called where record does not contain pm2_5.  This is unexpected.')
             raise weewx.UnknownType(obs_type)
         if record['pm2_5'] is None:
             # Returning CannotCalculate causes exception in ImageGenerator, return UnknownType instead.
             # ERROR weewx.reportengine: Caught unrecoverable exception in generator 'weewx.imagegenerator.ImageGenerator'
-            # Should not happen as the extension should not insert pm2_5 if it is None.
-            log.info('get_scalar called where record[pm2_5] is None.')
+            # Any archive catchup records will have None for pm2_5.
+            log.debug('get_scalar called where record[pm2_5] is None: %s.  Probably a catchup record.' %
+                timestamp_to_string(record['dateTime']))
             raise weewx.UnknownType(obs_type)
         try:
             pm2_5 = record['pm2_5']

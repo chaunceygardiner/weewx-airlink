@@ -62,7 +62,7 @@ If you don't meet the following requirements, do not install this extension.
 
 1. Run the following command.
 
-   `sudo /home/weewx/bin/wee_extension --install weewx-airlink-1.0.zip`
+   `sudo /home/weewx/bin/wee_extension --install weewx-airlink-1.0.1.zip`
 
    Note: this command assumes weewx is installed in /home/weewx.  If it's installed
    elsewhere, adjust the path of wee_extension accordingly.

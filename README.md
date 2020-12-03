@@ -57,7 +57,7 @@ If you don't meet the following requirements, do not install this extension.
   * Using WeeWX 4's new wview_extended schema.
   * Python 3.7 or greater
 
-1. Download the lastest release, weewx-airlink-1.0.zip, from the
+1. Download the lastest release, weewx-airlink-1.0.1.zip, from the
    [GitHub Repository](https://github.com/chaunceygardiner/weewx-airlink).
 
 1. Run the following command.

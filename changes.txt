@@ -1,6 +1,11 @@
 weewx-airlink change history
 ----------------------------
 
+1.0.1 12/2/2020
+Minor changes in dealing with when a PM2.5 value is not availble.
+Installer and extension of 1.0 release incorrectly listed version as 0.2.
+Minor code cleanup.
+
 1.0 10/31/2020
 --------------
 Switch to US EPA correction for PM2.5.  This correction is

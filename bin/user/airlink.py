@@ -61,10 +61,8 @@ weewx.units.USUnits['air_quality_color']       = 'aqi_color'
 weewx.units.MetricUnits['air_quality_color']   = 'aqi_color'
 weewx.units.MetricWXUnits['air_quality_color'] = 'aqi_color'
 
-weewx.units.default_unit_label_dict['pm2_5_aqi']  = ' AQI'
-weewx.units.default_unit_label_dict['pm2_5_aqi_color'] = ' RGB'
-weewx.units.default_unit_label_dict['pm2_5_1m_aqi']  = ' AQI'
-weewx.units.default_unit_label_dict['pm2_5_1m_aqi_color'] = ' RGB'
+weewx.units.default_unit_label_dict['aqi']  = ' AQI'
+weewx.units.default_unit_label_dict['aqi_color'] = ' RGB'
 
 weewx.units.default_unit_format_dict['aqi']  = '%d'
 weewx.units.default_unit_format_dict['aqi_color'] = '%d'

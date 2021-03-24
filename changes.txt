@@ -1,7 +1,10 @@
 weewx-airlink change history
 ----------------------------
 
-1.0.1 12/2/2020
+1.0.2 03/23/2021
+Fix broken labels for aqi and aqi_color observations.  Thanks to ArendPWS for this fix.
+
+1.0.1 12/02/2020
 Minor changes in dealing with when a PM2.5 value is not availble.
 Installer and extension of 1.0 release incorrectly listed version as 0.2.
 Minor code cleanup.

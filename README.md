@@ -40,7 +40,7 @@ than the PurpleAir.
 The following is an real world example of how well the PM2.5 concentrations track
 between PuprleAir's PM 2.5 cf_1 readings and AirLink's PM 2.5 readings.  The sensors
 are located beside each other.
-![AirLink PurpleAir Comparison](AirLinkPurpleAirComparison.jpg)
+![AirLink PurpleAir Comparison](PurpleAir_AirLink_comparison.jpeg)
 
 As of v1.1, the EPA correction is the 2021 version.
 See: https://www.epa.gov/sites/default/files/2021-05/documents/toolsresourceswebinar_purpleairsmoke_210519b.pdf

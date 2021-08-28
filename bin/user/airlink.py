@@ -41,7 +41,7 @@ from weewx.engine import StdService
 
 log = logging.getLogger(__name__)
 
-WEEWX_AIRLINK_VERSION = "1.0.2"
+WEEWX_AIRLINK_VERSION = "1.1"
 
 if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 7):
     raise weewx.UnsupportedFeature(
@@ -576,8 +576,15 @@ class AQI(weewx.xtypes.XType):
 
     @staticmethod
     def compute_pm_2p5_us_epa_correction(pm_2p5: float, hum: float, temp: float) -> float:
-        # PM2.5=0.541*PA_cf_1-0.0618*RH +0.00534*T +3.634
-        val = 0.541 * pm_2p5 - 0.0618 * hum + 0.00534 * temp + 3.634
+        # 2021 EPA Correction
+        # Low Concentration PAcf_1 ≤ 343 μg m-3  : PM2.5 = 0.52 x PAcf_1 - 0.086 x RH + 5.75
+        # High Concentration PAcf_1 > 343 μg m-3 : PM2.5 = 0.46 x PAcf_1 + 3.93 x 10**-4 x PAcf_1**2 + 2.97
+        #
+        if pm_2p5 < 343.0:
+            val = 0.52 * pm_2p5 - 0.086 * hum + 5.75
+        else:
+            val = 0.46 * pm_2p5 + 3.93 * 10**-4 * pm_2p5 ** 2 + 2.97
+
         return val if val >= 0.0 else 0.0
 
     @staticmethod

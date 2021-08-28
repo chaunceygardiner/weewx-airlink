@@ -1,6 +1,11 @@
 weewx-airlink change history
 ----------------------------
 
+1.1 08/27/2021
+Switch to 2021 version of US EPA Correction
+See: https://www.epa.gov/sites/default/files/2021-05/documents/toolsresourceswebinar_purpleairsmoke_210519b.pdf
+Provide more guidance on applicability of Purple Air's EPA correction to the AirLink sensor.
+
 1.0.2 03/23/2021
 Fix broken labels for aqi and aqi_color observations.  Thanks to ArendPWS for this fix.
 

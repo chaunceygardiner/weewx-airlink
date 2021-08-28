@@ -30,9 +30,20 @@ is the [RGBint](https://www.shodor.org/stella2java/rgbint.html) value
 (e.g., green for AQIs <= 50).
 
 PM2.5 concentrations are corrected with the US EPA correction for PurpleAir sensors.
-This somewhat presumptious decision was prompted by the observation that the AirLink
-sensor tracks remarkably well to a like positioned PurpleAir sensor.  Take this
-observation with a grain of salet (sample size == 1).
+This is a presumptious decision.  The AirLink sensor tracks remarkably well
+to a like positioned PurpleAir sensor's PM 2.5 atm readings (sample size == 1), but,
+the EPA correction is based on PM 2.5 cf_1 readings.  The AirLink really needs
+its own EPA correction, but that is not likely to happen any time soon.  In practice,
+at higher concentrations of PM 2.5 particles, the AirLink reports lower levels
+than the PurpleAir.
+
+The following is an real world example of how well the PM2.5 concentrations track
+between PuprleAir's PM 2.5 cf_1 readings and AirLink's PM 2.5 readings.  The sensors
+are located beside each other.
+![AirLink PurpleAir Comparison](AirLinkPurpleAirComparison.jpg)
+
+As of v1.1, the EPA correction is the 2021 version.
+See: https://www.epa.gov/sites/default/files/2021-05/documents/toolsresourceswebinar_purpleairsmoke_210519b.pdf
 
 The `pm1_0`, `pm2_5`, `pm10_0`, 'pm2_5_aqi' and 'pm2_5_aqi_color' fields are
 available for reporting and graphs, the following additional
@@ -57,12 +68,12 @@ If you don't meet the following requirements, do not install this extension.
   * Using WeeWX 4's new wview_extended schema.
   * Python 3.7 or greater
 
-1. Download the lastest release, weewx-airlink-1.0.2.zip, from the
+1. Download the lastest release, weewx-airlink-1.1.zip, from the
    [GitHub Repository](https://github.com/chaunceygardiner/weewx-airlink).
 
 1. Run the following command.
 
-   `sudo /home/weewx/bin/wee_extension --install weewx-airlink-1.0.2.zip`
+   `sudo /home/weewx/bin/wee_extension --install weewx-airlink-1.1.zip`
 
    Note: this command assumes weewx is installed in /home/weewx.  If it's installed
    elsewhere, adjust the path of wee_extension accordingly.

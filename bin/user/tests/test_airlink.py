@@ -126,12 +126,19 @@ class AirLinkTests(unittest.TestCase):
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi_color(500), 128 << 16)
 
     def test_compute_pm_2p5(self):
-        # PM2.5=0.541*PA_cf1(avgAB)-0.0618*RH +0.00534*T +3.634
-        self.assertEqual(user.airlink.AQI.compute_pm_2p5_us_epa_correction(0.0, 0.0, 0.0), 3.634)
-        val = user.airlink.AQI.compute_pm_2p5_us_epa_correction(0.0, 60.0, 80.0)
-        self.assertTrue(val > 0.353199 and val < 0.3532)
-        val = user.airlink.AQI.compute_pm_2p5_us_epa_correction(0.0, 100.0, 100.0)
-        self.assertEqual(val, 0.0)
+        # 0 concentration and 0 RH
+        self.assertEqual(user.airlink.AQI.compute_pm_2p5_us_epa_correction(0.0, 0.0, 96), 5.75)
+
+        # 0 concentration and reasonable RH
+        self.assertEqual(user.airlink.AQI.compute_pm_2p5_us_epa_correction(0.0, 21.0, 96.0), 3.944)
+
+        # Low concentration
+        pm2_5 = user.airlink.AQI.compute_pm_2p5_us_epa_correction(108.0, 95.0, 20.0)
+        self.assertTrue(pm2_5 > 53.73 and pm2_5 < 53.75)
+
+        # High concentration
+        pm2_5 = user.airlink.AQI.compute_pm_2p5_us_epa_correction(400.0, 95.0, 20.0)
+        self.assertTrue(pm2_5 > 249.84 and pm2_5 < 249.86)
 
     def test_is_sane(self):
         minimal= ('{ \

@@ -1,6 +1,11 @@
 weewx-airlink change history
 ----------------------------
 
+1.2 06/25/2022
+Remove EPA correction.  The EPA correction is meant for PurpleAir.  It needs PM2.5 CF1 readings,
+but the Airlink only provides PM2.5 ATM readings.  Hence forth, this Airlink extension will
+report Airlink readings with no correction.
+
 1.1 08/27/2021
 Switch to 2021 version of US EPA Correction
 See: https://www.epa.gov/sites/default/files/2021-05/documents/toolsresourceswebinar_purpleairsmoke_210519b.pdf

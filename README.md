@@ -29,21 +29,9 @@ is the [RGBint](https://www.shodor.org/stella2java/rgbint.html) value
 `$current.pm2_5_aqi_color` (useful for displaying AQI in the appropriate color
 (e.g., green for AQIs <= 50).
 
-PM2.5 concentrations are corrected with the US EPA correction for PurpleAir sensors.
-This is a presumptious decision.  The AirLink sensor tracks remarkably well
-to a like positioned PurpleAir sensor's PM 2.5 atm readings (sample size == 1), but,
-the EPA correction is based on PM 2.5 cf_1 readings.  The AirLink really needs
-its own EPA correction, but that is not likely to happen any time soon.  In practice,
-at higher concentrations of PM 2.5 particles, the AirLink reports lower levels
-than the PurpleAir.
-
-The following is an real world example of how well the PM2.5 concentrations track
-between PuprleAir's PM 2.5 cf_1 readings and AirLink's PM 2.5 readings.  The sensors
-are located beside each other.
-![AirLink PurpleAir Comparison](PurpleAir_AirLink_comparison.jpeg)
-
-As of v1.1, the EPA correction is the 2021 version.
-See: https://www.epa.gov/sites/default/files/2021-05/documents/toolsresourceswebinar_purpleairsmoke_210519b.pdf
+As of v1.2, no EPA correction is applied ot the Airlink readings.  The EPA correction
+needs PM2.5 CF1 readings, but the Airlink only provides PM2.5 ATM readings.  Hence
+forth, this Airlink extension will report Airlink readings with no correction.
 
 The `pm1_0`, `pm2_5`, `pm10_0`, 'pm2_5_aqi' and 'pm2_5_aqi_color' fields are
 available for reporting and graphs, the following additional
@@ -68,12 +56,12 @@ If you don't meet the following requirements, do not install this extension.
   * Using WeeWX 4's new wview_extended schema.
   * Python 3.7 or greater
 
-1. Download the lastest release, weewx-airlink-1.1.zip, from the
+1. Download the lastest release, weewx-airlink-1.2.zip, from the
    [GitHub Repository](https://github.com/chaunceygardiner/weewx-airlink).
 
 1. Run the following command.
 
-   `sudo /home/weewx/bin/wee_extension --install weewx-airlink-1.1.zip`
+   `sudo /home/weewx/bin/wee_extension --install weewx-airlink-1.2.zip`
 
    Note: this command assumes weewx is installed in /home/weewx.  If it's installed
    elsewhere, adjust the path of wee_extension accordingly.

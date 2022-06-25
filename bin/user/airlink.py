@@ -41,7 +41,7 @@ from weewx.engine import StdService
 
 log = logging.getLogger(__name__)
 
-WEEWX_AIRLINK_VERSION = "1.1"
+WEEWX_AIRLINK_VERSION = "1.2"
 
 if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 7):
     raise weewx.UnsupportedFeature(
@@ -406,11 +406,8 @@ class AirLink(StdService):
                 if cfg.concentrations.pm_1_last is not None:
                     packet['pm1_0'] = cfg.concentrations.pm_1_last
                     log.debug('Inserted packet[pm1_0]: %f into packet.' % cfg.concentrations.pm_1_last)
-                if (cfg.concentrations.pm_2p5_last is not None
-                        and cfg.concentrations.hum is not None
-                        and cfg.concentrations.temp is not None):
-                    packet['pm2_5'] = AQI.compute_pm_2p5_us_epa_correction(
-                            cfg.concentrations.pm_2p5_last, cfg.concentrations.hum, cfg.concentrations.temp)
+                if cfg.concentrations.pm_2p5_last is not None:
+                    packet['pm2_5'] = cfg.concentrations.pm_2p5_last
                     log.debug('Inserted packet[pm2_5]: %f into packet.' % cfg.concentrations.pm_2p5_last)
                     # Put aqi and color in the packet.
                     packet['pm2_5_aqi'] = AQI.compute_pm2_5_aqi(packet['pm2_5'])
@@ -426,13 +423,9 @@ class AirLink(StdService):
                 elif cfg.concentrations.pm_1_last is not None:
                     packet['pm1_0_1m']       = cfg.concentrations.pm_1_last
                 if cfg.concentrations.pm_2p5 is not None:
-                    packet['pm2_5_1m']       = AQI.compute_pm_2p5_us_epa_correction(
-                            cfg.concentrations.pm_2p5, cfg.concentrations.hum, cfg.concentrations.temp)
-                elif (cfg.concentrations.pm_2p5_last is not None
-                        and cfg.concentrations.hum is not None
-                        and cfg.concentrations.temp is not None):
-                    packet['pm2_5_1m']       = AQI.compute_pm_2p5_us_epa_correction(
-                            cfg.concentrations.pm_2p5_last, cfg.concentrations.hum, cfg.concentrations.temp)
+                    packet['pm2_5_1m']       = cfg.concentrations.pm_2p5
+                elif cfg.concentrations.pm_2p5_last is not None:
+                    packet['pm2_5_1m']       = cfg.concentrations.pm_2p5_last
                 if cfg.concentrations.pm_10 is not None:
                     packet['pm10_0_1m']      = cfg.concentrations.pm_10
                 elif cfg.concentrations.pm_10_last is not None:
@@ -445,11 +438,8 @@ class AirLink(StdService):
 
                 # And insert nowcast for pm 2.5 and 10 as some might want to report that.
                 # If nowcast not available, don't substitute.
-                if (cfg.concentrations.pm_2p5_nowcast is not None
-                        and cfg.concentrations.hum is not None
-                        and cfg.concentrations.temp is not None):
-                    packet['pm2_5_nowcast']  = AQI.compute_pm_2p5_us_epa_correction(
-                            cfg.concentrations.pm_2p5_nowcast, cfg.concentrations.hum, cfg.concentrations.temp)
+                if cfg.concentrations.pm_2p5_nowcast is not None:
+                    packet['pm2_5_nowcast']  = cfg.concentrations.pm_2p5_nowcast
                     packet['pm2_5_nowcast_aqi'] = AQI.compute_pm2_5_aqi(packet['pm2_5_nowcast'])
                     packet['pm2_5_nowcast_aqi_color'] = AQI.compute_pm2_5_aqi_color(packet['pm2_5_nowcast_aqi'])
                 if cfg.concentrations.pm_10_nowcast is not None:
@@ -573,19 +563,6 @@ class AQI(weewx.xtypes.XType):
             return (128 << 16) + 128        # Purple
         else:
             return 128 << 16                # Maroon
-
-    @staticmethod
-    def compute_pm_2p5_us_epa_correction(pm_2p5: float, hum: float, temp: float) -> float:
-        # 2021 EPA Correction
-        # Low Concentration PAcf_1 ≤ 343 μg m-3  : PM2.5 = 0.52 x PAcf_1 - 0.086 x RH + 5.75
-        # High Concentration PAcf_1 > 343 μg m-3 : PM2.5 = 0.46 x PAcf_1 + 3.93 x 10**-4 x PAcf_1**2 + 2.97
-        #
-        if pm_2p5 < 343.0:
-            val = 0.52 * pm_2p5 - 0.086 * hum + 5.75
-        else:
-            val = 0.46 * pm_2p5 + 3.93 * 10**-4 * pm_2p5 ** 2 + 2.97
-
-        return val if val >= 0.0 else 0.0
 
     @staticmethod
     def get_scalar(obs_type, record, db_manager=None):

@@ -41,7 +41,7 @@ from weewx.engine import StdService
 
 log = logging.getLogger(__name__)
 
-WEEWX_AIRLINK_VERSION = "1.2"
+WEEWX_AIRLINK_VERSION = "1.3"
 
 if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 7):
     raise weewx.UnsupportedFeature(
@@ -532,19 +532,19 @@ class AQI(weewx.xtypes.XType):
         x = math.trunc(pm2_5 * 10) / 10
 
         if x <= 12.0: # Good
-            return x / 12.0 * 50
+            return round(x / 12.0 * 50)
         elif x <= 35.4: # Moderate
-            return (x - 12.1) / 23.3 * 49.0 + 51.0
+            return round((x - 12.1) / 23.3 * 49.0 + 51.0)
         elif x <= 55.4: # Unhealthy for senstive
-            return (x - 35.5) / 19.9 * 49.0 + 101.0
+            return round((x - 35.5) / 19.9 * 49.0 + 101.0)
         elif x <= 150.4: # Unhealthy
-            return (x - 55.5) / 94.9 * 49.0 + 151.0
+            return round((x - 55.5) / 94.9 * 49.0 + 151.0)
         elif x <= 250.4: # Very Unhealthy
-            return (x - 150.5) / 99.9 * 99.0 + 201.0
+            return round((x - 150.5) / 99.9 * 99.0 + 201.0)
         elif x <= 350.4: # Hazardous
-            return (x - 250.5) / 99.9 * 99.0 + 301.0
+            return round((x - 250.5) / 99.9 * 99.0 + 301.0)
         else: # Hazardous
-            return (x - 350.5) / 149.9 * 99.0 + 401.0
+            return round((x - 350.5) / 149.9 * 99.0 + 401.0)
 
     @staticmethod
     def compute_pm2_5_aqi_color(pm2_5_aqi):

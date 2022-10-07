@@ -1,6 +1,9 @@
 weewx-airlink change history
 ----------------------------
 
+1.3 10/07/2022
+When computing AQI, round to nearest integer (rather than truncate).
+
 1.2 06/25/2022
 Remove EPA correction.  The EPA correction is meant for PurpleAir.  It needs PM2.5 CF1 readings,
 but the Airlink only provides PM2.5 ATM readings.  Hence forth, this Airlink extension will

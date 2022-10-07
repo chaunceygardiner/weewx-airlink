@@ -32,7 +32,7 @@ def loader():
 class AirLinkInstaller(ExtensionInstaller):
     def __init__(self):
         super(AirLinkInstaller, self).__init__(
-            version="1.2",
+            version="1.3",
             name='airlink',
             description='Record air quality as provided by a Davis AirLink sensor.',
             author="John A Kline",

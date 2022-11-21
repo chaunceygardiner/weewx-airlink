@@ -1,4 +1,3 @@
-
 #
 #    See the file LICENSE.txt for your full rights.
 #
@@ -35,7 +34,7 @@ class AirLinkTests(unittest.TestCase):
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi( 0.0), 0)
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi( 6.0), 25)
         aqi = user.airlink.AQI.compute_pm2_5_aqi(11.26)
-        self.assertTrue(aqi > 46.666 and aqi < 46.667)
+        self.assertEqual(aqi, 47)
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi(12.0), 50)
         # 12.099 is truncated to 12
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi(12.099), 50)
@@ -43,37 +42,37 @@ class AirLinkTests(unittest.TestCase):
         # Moderate
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi(12.1),  51)
         aqi = user.airlink.AQI.compute_pm2_5_aqi(23.7)
-        self.assertTrue(aqi > 75.3948 and aqi < 75.3949)
+        self.assertEqual(aqi, 75)
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi(35.499), 100)
 
         # USG
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi(35.5), 101)
         aqi = user.airlink.AQI.compute_pm2_5_aqi(45.4)
-        self.assertTrue(aqi > 125.3768 and aqi < 125.3769)
+        self.assertEqual(aqi, 125)
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi(55.4), 150)
 
         # Unhealthy
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi( 55.5), 151)
         aqi = user.airlink.AQI.compute_pm2_5_aqi(102.9)
-        self.assertTrue(aqi > 175.4741 and aqi < 175.4742)
+        self.assertEqual(aqi, 175)
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi(150.4), 200)
 
         # Very Unhealthy
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi(150.5), 201)
         aqi = user.airlink.AQI.compute_pm2_5_aqi(200.4)
-        self.assertTrue(aqi > 250.4504 and aqi < 250.4505)
+        self.assertEqual(aqi, 250)
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi(250.4), 300)
 
         # Harzadous
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi(250.5), 301)
         aqi = user.airlink.AQI.compute_pm2_5_aqi(300.4)
-        self.assertTrue(aqi > 350.4504 and aqi < 350.4505)
+        self.assertEqual(aqi, 350)
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi(350.4), 400)
 
         # Harzadous
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi(350.5), 401)
         aqi = user.airlink.AQI.compute_pm2_5_aqi(425.45)
-        self.assertTrue(aqi > 450.4 and aqi < 450.6)
+        self.assertEqual(aqi, 450)
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi(500.4), 500)
 
     #             U.S. EPA PM2.5 AQI
@@ -124,21 +123,6 @@ class AirLinkTests(unittest.TestCase):
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi_color(401), 128 << 16)
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi_color(450), 128 << 16)
         self.assertEqual(user.airlink.AQI.compute_pm2_5_aqi_color(500), 128 << 16)
-
-    def test_compute_pm_2p5(self):
-        # 0 concentration and 0 RH
-        self.assertEqual(user.airlink.AQI.compute_pm_2p5_us_epa_correction(0.0, 0.0, 96), 5.75)
-
-        # 0 concentration and reasonable RH
-        self.assertEqual(user.airlink.AQI.compute_pm_2p5_us_epa_correction(0.0, 21.0, 96.0), 3.944)
-
-        # Low concentration
-        pm2_5 = user.airlink.AQI.compute_pm_2p5_us_epa_correction(108.0, 95.0, 20.0)
-        self.assertTrue(pm2_5 > 53.73 and pm2_5 < 53.75)
-
-        # High concentration
-        pm2_5 = user.airlink.AQI.compute_pm_2p5_us_epa_correction(400.0, 95.0, 20.0)
-        self.assertTrue(pm2_5 > 249.84 and pm2_5 < 249.86)
 
     def test_is_sane(self):
         minimal= ('{ \

@@ -56,6 +56,14 @@ If you don't meet the following requirements, do not install this extension.
   * Using WeeWX 4's new wview_extended schema.
   * Python 3.7 or greater
 
+1. Install python3's dateutil package.  On debian, that can be accomplished with:
+
+   `apt install python3-dateutil`
+
+1. Install python3's requests package.  On debian, that can be accomplished with:
+
+   `apt install python3-requests`
+
 1. Download the lastest release, weewx-airlink-1.3.zip, from the
    [GitHub Repository](https://github.com/chaunceygardiner/weewx-airlink).
 

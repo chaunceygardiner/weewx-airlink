@@ -63,7 +63,7 @@ If you don't meet the following requirements, do not install this extension.
 
 1. Install the dateutil package.
 
-   `pip install dateutil`
+   `pip install python-dateutil`
 
 1. Install the requests package.
 

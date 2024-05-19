@@ -67,7 +67,7 @@ If you don't meet the following requirements, do not install this extension.
 
 1. Install the requests package.
 
-   `apt install requests`
+   `pip install requests`
 
 
 1. Download the lastest release, weewx-airlink-1.3.zip, from the

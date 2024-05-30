@@ -1,6 +1,9 @@
 weewx-airlink change history
 ----------------------------
 
+1.4 05/30/2024
+Fix broken install.
+
 1.3 10/07/2022
 When computing AQI, round to nearest integer (rather than truncate).
 

@@ -70,12 +70,12 @@ If you don't meet the following requirements, do not install this extension.
    `pip install requests`
 
 
-1. Download the lastest release, weewx-airlink-1.3.zip, from the
+1. Download the lastest release, weewx-airlink-1.4.zip, from the
    [GitHub Repository](https://github.com/chaunceygardiner/weewx-airlink).
 
 1. Install the airlink extension.
 
-   `weectl extension install weewx-airlink-1.3.zip`
+   `weectl extension install weewx-airlink-1.4.zip`
 
 1. Edit the `AirLink` section of weewx.conf (which was created by the install
    above).  In particular, change the hostname in the section labeled Sensor1 to
@@ -122,12 +122,12 @@ If you don't meet the following requirements, do not install this extension.
 
    `apt install python3-requests`
 
-1. Download the lastest release, weewx-airlink-1.3.zip, from the
+1. Download the lastest release, weewx-airlink-1.4.zip, from the
    [GitHub Repository](https://github.com/chaunceygardiner/weewx-airlink).
 
 1. Run the following command.
 
-   `sudo /home/weewx/bin/wee_extension --install weewx-airlink-1.3.zip`
+   `sudo /home/weewx/bin/wee_extension --install weewx-airlink-1.4.zip`
 
    Note: this command assumes weewx is installed in /home/weewx.  If it's installed
    elsewhere, adjust the path of wee_extension accordingly.

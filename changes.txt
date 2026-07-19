@@ -1,8 +1,8 @@
 weewx-airlink change history
 ----------------------------
 
-2.0.1 (in development)
-----------------------
+2.0.1 07/19/2026
+----------------
 Action required: none for typical installs.  Only if you added a
 pm2_5_aqi/pm2_5_aqi_color column to your database schema, see below.
 

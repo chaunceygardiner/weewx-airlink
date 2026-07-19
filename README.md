@@ -241,9 +241,38 @@ values is meaningless, since AQI is a non-linear transform of
 concentration).  An `[Accumulator]` section in weewx.conf takes
 precedence if you deliberately want different behavior.
 
-If you added a `pm2_5_aqi` (or `pm2_5_aqi_color`) column to your database
-schema — e.g., to feed Grafana directly — the accumulator no longer fills
-it; have WeeWX compute it through the xtype instead, which stores
+### If you added an AQI column to your database
+
+Some users have added a `pm2_5_aqi` (or `pm2_5_aqi_color`) column to their
+database schema.  As of 2.0.1 the accumulator no longer fills such a
+column, and any values stored in it *before* 2.0.1 are accumulator
+averages that disagree with what the xtype computes (non-integer, and
+averaged across a non-linear transform).  While present, those stored
+values also override the xtype for `$current`.
+
+**The cleanest fix is to remove the column.**  With WeeWX stopped (for a
+pip install, activate WeeWX's virtual environment first):
+
+WeeWX 5:
+
+```
+weectl database drop-columns pm2_5_aqi
+```
+
+WeeWX 4 (adjust the path if WeeWX is not installed in /home/weewx):
+
+```
+sudo /home/weewx/bin/wee_database --drop-columns=pm2_5_aqi
+```
+
+Name exactly the column(s) you added (repeat for `pm2_5_aqi_color` if you
+added that too — naming a column that doesn't exist aborts the whole
+command).  This also removes the matching daily-summary table.  Restart
+WeeWX; no configuration changes are needed — `$current`, aggregates and
+graphs all resolve through the xtype again.
+
+**If something outside WeeWX reads the column directly** (e.g., Grafana),
+keep it and have WeeWX compute it through the xtype, which stores
 correctly EPA-rounded values:
 
 ```
@@ -252,6 +281,28 @@ correctly EPA-rounded values:
         pm2_5_aqi = prefer_hardware
         pm2_5_aqi_color = prefer_hardware
 ```
+
+Then purge any values stored before 2.0.1 and backfill them through the
+xtype:
+
+1. Add the `[StdWXCalculate]` entries above to weewx.conf.
+
+1. Stop WeeWX and back up the database.
+
+1. NULL out the old values — for each AQI column you added, e.g. with
+   SQLite (adapt for MySQL):
+
+   ```
+   sqlite3 /path/to/archive.sdb "UPDATE archive SET pm2_5_aqi = NULL;"
+   ```
+
+1. Backfill.  WeeWX 5: `weectl database calc-missing`; WeeWX 4:
+   `wee_database --calc-missing`.  This recomputes each NULLed value from
+   that record's stored `pm2_5` and recalculates the daily summaries.
+   (It loads the extension to get the AQI xtype, so expect AirLink's
+   startup log lines, including a sensor fetch.)
+
+1. Restart WeeWX.
 
 # Troubleshooting
 

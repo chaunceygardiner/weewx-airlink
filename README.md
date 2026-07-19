@@ -1,188 +1,224 @@
 # weewx-airlink
-*Open source plugin for WeeWX software.
 
-## Description
+A WeeWX extension that reads a [Davis AirLink](https://www.davisinstruments.com/airlink/)
+air quality sensor on the local network (or an
+[airlink-proxy](https://github.com/chaunceygardiner/airlink-proxy) service) and
+inserts particulate concentrations into every WeeWX loop packet.
 
-A WeeWX plugin that gets its AirLink sensor readings either directly
-from the AirLink sensor or from a
-[airlink-proxy](https://github.com/chaunceygardiner/airlink-proxy) service.
+Copyright (C) 2020-2026 by John A Kline (john@johnkline.com)
 
-Copyright (C)2020-2024 by John A Kline (john@johnkline.com)
+**Requires:**
+* WeeWX 4 or 5
+* Python 3.7 or greater
+* The [wview_extended](https://github.com/weewx/weewx/blob/master/src/schemas/wview_extended.py)
+  schema (it contains the `pm1_0`, `pm2_5` and `pm10_0` columns)
+* The `requests` Python package
+* A Davis AirLink sensor reachable on your local network
 
-**This plugin requires Python 3.7, WeeWX 4 or 5 and the
-[wview_extended](https://github.com/weewx/weewx/blob/master/src/schemas/wview_extended.py)
-schema**
+Not sure about the schema?  wview_extended is the default for new WeeWX 4
+and 5 installs; only databases created under WeeWX 3 and carried forward
+still use the old schema.  To check, look for `pm2_5` in your archive
+table, e.g.:
 
-weewx-airlink requires the
-[wview_extended](https://github.com/weewx/weewx/blob/master/src/schemas/wview_extended.py)
-in WeeWX 4 that contains pm1_0, pm2_5 and pm10_0 columns.  With the weewx-airlink
-extension, Loop records will be populated with pm1_0, pm2_5 and pm10_0 fields that
-correspond to AirLink's pm_1_last, pm_2p5_last and pm_10_last fields.
+```
+echo '.schema archive' | sqlite3 /var/lib/weewx/weewx.sdb | grep pm2_5
+```
 
-In addition to pm1_0, pm2_5 and pm10_0, AQI variables are also available
-(even though they are not in the database) via WeeWX 4's
-[XTypes](https://github.com/weewx/weewx/wiki/WeeWX-V4-user-defined-types).
-pm2_5_aqi is automatically computed from pm2_5 and can be used in reports
-(`$current.pm2_5_aqi`, `$day.pm2_5_aqi`) and in graphs
-(`[[[[pm2_5_aqi]]]`).  Also available is
-is the [RGBint](https://www.shodor.org/stella2java/rgbint.html) value
-`$current.pm2_5_aqi_color` (useful for displaying AQI in the appropriate color
-(e.g., green for AQIs <= 50).
+## What it does
 
-As of v1.2, no EPA correction is applied ot the Airlink readings.  The EPA correction
-needs PM2.5 CF1 readings, but the Airlink only provides PM2.5 ATM readings.  Hence
-forth, this Airlink extension will report Airlink readings with no correction.
+Every loop packet is populated with the AirLink's instantaneous readings
+under the wview_extended column names (so they land in the database and in
+history graphs on their own):
 
-The `pm1_0`, `pm2_5`, `pm10_0`, 'pm2_5_aqi' and 'pm2_5_aqi_color' fields are
-available for reporting and graphs, the following additional
-fields are inserted into loop records (useful for real time updating):
-`pm1_0_1m`: PM1 1 minute average
-`pm2_5_1m`: PM2.5 1 minute average
-`pm10_0_1m`: PM10 1 minute average
-`pm2_5_1m_aqi`: PM2.5 1m AQI
-`pm2_5_1m_aqi_color`: PM2.5 1m AQI color
-`pm2_5_nowcast`: : PM2.5 NowCast
-`pm2_5_nowcast_aqi`: PM2.5 NowCast AQI
-`pm2_5_nowcast_aqi_color`: PM2.5 NowCast AQI color
-`pm10_0_nowcast`: PM10 NowCast
+| Field     | Contents                                            |
+|-----------|-----------------------------------------------------|
+| `pm1_0`   | PM1.0 concentration (µg/m³)                         |
+| `pm2_5`   | PM2.5 concentration (µg/m³)                         |
+| `pm10_0`  | PM10.0 concentration (µg/m³)                        |
 
-A skin is provided to show a sample report:
+Loop packets also carry the smoother variants the AirLink computes —
+useful for real-time displays (e.g., with
+[weewx-loopdata](https://github.com/chaunceygardiner/weewx-loopdata)),
+though they are not stored in the database:
+
+| Field                      | Contents                                     |
+|----------------------------|----------------------------------------------|
+| `pm1_0_1m`                 | PM1.0, 1-minute average                      |
+| `pm2_5_1m`                 | PM2.5, 1-minute average                      |
+| `pm10_0_1m`                | PM10.0, 1-minute average                     |
+| `pm2_5_1m_aqi`             | AQI computed from `pm2_5_1m`                 |
+| `pm2_5_1m_aqi_color`       | RGB color of that AQI's category             |
+| `pm2_5_nowcast`            | PM2.5 [NowCast](https://en.wikipedia.org/wiki/NowCast_(air_quality_index)) average |
+| `pm2_5_nowcast_aqi`        | AQI computed from `pm2_5_nowcast`            |
+| `pm2_5_nowcast_aqi_color`  | RGB color of that AQI's category             |
+| `pm10_0_nowcast`           | PM10.0 NowCast average                       |
+
+Finally, two observation types are available everywhere in reports and
+graphs — without being stored in the database — via WeeWX
+[XTypes](https://github.com/weewx/weewx/wiki/WeeWX-V4-user-defined-types):
+
+| Field              | Contents                                                         |
+|--------------------|------------------------------------------------------------------|
+| `pm2_5_aqi`        | US EPA Air Quality Index computed from `pm2_5` (2024 definition) |
+| `pm2_5_aqi_color`  | The RGB color of the AQI category, as a single integer           |
+
+Readings are sanity checked (missing or non-numeric fields, stale
+timestamps and device error responses are rejected), and responses from
+early AirLink firmware (data structure type 5) are converted
+automatically.  If multiple sensors are configured, they are tried in
+order until one produces a good reading.  No correction is applied to the
+readings: the Davis-reported concentrations are inserted as-is.
+
+### AQI categories
+
+`pm2_5_aqi` conforms to the
+[2024 EPA AQI definition](https://www.epa.gov/system/files/documents/2024-02/pm-naaqs-air-quality-index-fact-sheet.pdf);
+`pm2_5_aqi_color` uses the EPA-defined RGB colors:
+
+| Category                       | AQI       | 24-hr PM2.5 (µg/m³) | Color  | RGB           |
+|--------------------------------|-----------|---------------------|--------|---------------|
+| Good                           | 0 - 50    | 0.0 - 9.0           | Green  | (0, 228, 0)   |
+| Moderate                       | 51 - 100  | 9.1 - 35.4          | Yellow | (255, 255, 0) |
+| Unhealthy for Sensitive Groups | 101 - 150 | 35.5 - 55.4         | Orange | (255, 126, 0) |
+| Unhealthy                      | 151 - 200 | 55.5 - 125.4        | Red    | (255, 0, 0)   |
+| Very Unhealthy                 | 201 - 300 | 125.5 - 225.4       | Purple | (143, 63, 151)|
+| Hazardous                      | 301 - 500 | 225.5 - 325.4       | Maroon | (126, 0, 35)  |
+
+Concentrations above 325.4 µg/m³ map to AQI values above 500, continuing on
+the same slope as AQI 301-500 (per the May 2024
+[AirNow Technical Assistance Document](https://document.airnow.gov/technical-assistance-document-for-the-reporting-of-daily-air-quailty.pdf)).
+The category and color remain Hazardous/Maroon.
+
+### Demo skin
+
+A small demo report is installed at `<HTML_ROOT>/airlink`:
+
 ![AirLinkReport](AirLinkReport.jpg)
 
-# Installation Instructions
+### What's airlink-proxy?
 
-If you don't meet the following requirements, do not install this extension.
-  * WeeWX 4 or 5
-  * Using WeeWX 4's (or 5's) wview_extended schema.
-  * Python 3.7 or greater
+[airlink-proxy](https://github.com/chaunceygardiner/airlink-proxy) is an
+optional service that averages sensor readings over the archive period.
+It typically answers on port 8000; point a `[[SensorN]]` section at it.
+If in doubt, skip it and query the AirLink sensor directly.
 
-## WeeWX 5 Installation Instructions
+# Installation
 
-1. Activate the virtual environment (actual syntax varies by type of WeeWX install):
-   `/home/weewx/weewx-venv/bin/activate`
+1. Find your sensor on the network and verify you can reach it.
 
-1. Install the dateutil package.
+   Find the AirLink's IP address (e.g., in your router's DHCP client list
+   or the WeatherLink app), then browse to
+   `http://<sensor-ip>/v1/current_conditions`.  You should see a page of
+   JSON sensor data — that is exactly the endpoint this extension polls.
+   Since the extension needs a stable address, give the sensor a DHCP
+   reservation in your router (or a hostname in local DNS) so its address
+   doesn't change.
 
-   `pip install python-dateutil`
+1. Install the prerequisite Python package.
 
-1. Install the requests package.
-
-   `pip install requests`
-
-
-1. Download the lastest release, weewx-airlink-1.4.zip, from the
-   [GitHub Repository](https://github.com/chaunceygardiner/weewx-airlink).
-
-1. Install the airlink extension.
-
-   `weectl extension install weewx-airlink-1.4.zip`
-
-1. Edit the `AirLink` section of weewx.conf (which was created by the install
-   above).  In particular, change the hostname in the section labeled Sensor1 to
-   be a name resolvable to the IP address of an AirLink sensor or the IP address
-   of an AirLink sensor.  More sensors can be specified.  For example, to add
-   a second AirLink sensor, enable the Sensor2 section and specify the hostname.
-   There is no limit to how many sensors can be configured; but the numbering must
-   be consecutive.  The order in which sensors are interrogated is low numbers to
-   high.  Once a sensor replies, no further sensors are interrogated for the current
-   polling round.
-
-   Note: The port can be specified because this extension also works with the
-   [airlink-proxy](https://github.com/chaunceygardiner/airlink-proxy) service.
-   That service typcially uses port 8000.
+   For a WeeWX pip install, activate WeeWX's virtual environment first, then:
 
    ```
-   [AirLink]
-       [[Sensor1]]
-           enable = true
-           hostname = airlink
-           port = 80
-           timeout = 2
-       [[Sensor2]]
-           enable = false
-           hostname = airlink2
-           port = 80
-           timeout = 2
+   pip install requests
    ```
 
-1. Restart WeeWX
-
-1. To check for a successful install, wait for a reporting cycle, then
-   navigate in a browser to the WeeWX site and add /airlink to the end
-   of the URL (e.g., http://weewx-machine/weewx/airlink).
-   The PM2.5 and AQI graphs will fill in over time.
-
-## WeeWX 4 Installation Instructions
-
-1. Install python3's dateutil package.  On debian, that can be accomplished with:
-
-   `apt install python3-dateutil`
-
-1. Install python3's requests package.  On debian, that can be accomplished with:
-
-   `apt install python3-requests`
-
-1. Download the lastest release, weewx-airlink-1.4.zip, from the
-   [GitHub Repository](https://github.com/chaunceygardiner/weewx-airlink).
-
-1. Run the following command.
-
-   `sudo /home/weewx/bin/wee_extension --install weewx-airlink-1.4.zip`
-
-   Note: this command assumes weewx is installed in /home/weewx.  If it's installed
-   elsewhere, adjust the path of wee_extension accordingly.
-
-1. Edit the `AirLink` section of weewx.conf (which was created by the install
-   above).  In particular, change the hostname in the section labeled Sensor1 to
-   be a name resolvable to the IP address of an AirLink sensor or the IP address
-   of an AirLink sensor.  More sensors can be specified.  For example, to add
-   a second AirLink sensor, enable the Sensor2 section and specify the hostname.
-   There is no limit to how many sensors can be configured; but the numbering must
-   be consecutive.  The order in which sensors are interrogated is low numbers to
-   high.  Once a sensor replies, no further sensors are interrogated for the current
-   polling round.
-
-   Note: The port can be specified because this extension also works with the
-   [airlink-proxy](https://github.com/chaunceygardiner/airlink-proxy) service.
-   That service typcially uses port 8000.
+   For a Debian package install of WeeWX:
 
    ```
-   [AirLink]
-       [[Sensor1]]
-           enable = true
-           hostname = airlink
-           port = 80
-           timeout = 2
-       [[Sensor2]]
-           enable = false
-           hostname = airlink2
-           port = 80
-           timeout = 2
+   apt install python3-requests
    ```
 
-1. Restart WeeWX
+1. Download the latest release, `weewx-airlink.zip`, from the
+   [GitHub repository](https://github.com/chaunceygardiner/weewx-airlink).
 
-1. To check for a successful install, wait for a reporting cycle, then
-   navigate in a browser to the WeeWX site and add /airlink to the end
-   of the URL (e.g., http://weewx-machine/weewx/airlink).
-   The PM2.5 and AQI graphs will fill in over time.
+1. Install the extension and restart WeeWX.
 
-# How to access weewx-airlink fields in reports.
+   WeeWX 5:
 
-Note: Although the examples below show the use of $current, aggregates are also
-supported (e.g., the high PM2.5 for the week can be presented with `$week.pm2_5.max`.
+   ```
+   weectl extension install weewx-airlink.zip
+   ```
 
-To show the PM2.5 reading, use the following:
+   WeeWX 4 (adjust the path if WeeWX is not installed in /home/weewx):
+
+   ```
+   sudo /home/weewx/bin/wee_extension --install weewx-airlink.zip
+   ```
+
+1. Edit the `[AirLink]` section of weewx.conf (created by the install) to
+   point at your sensor, then restart WeeWX.
+
+1. To check the install, wait for a reporting cycle, then browse to the WeeWX
+   site with `/airlink` appended to the URL
+   (e.g., `http://weewx-machine/weewx/airlink`).  The PM2.5 and AQI graphs
+   fill in over time.
+
+## Configuration
+
 ```
+[AirLink]
+    [[Sensor1]]
+        enable = true
+        hostname = airlink
+        port = 80
+        timeout = 2
+    [[Sensor2]]
+        enable = false
+        hostname = airlink2
+        port = 80
+        timeout = 2
+```
+
+| Option     | Default | Meaning                                       |
+|------------|---------|-----------------------------------------------|
+| `enable`   | false   | Whether this source is polled                 |
+| `hostname` |         | Hostname or IP address of the sensor (or airlink-proxy) |
+| `port`     | 80      | Port to connect on (airlink-proxy: 8000)      |
+| `timeout`  | 10      | HTTP timeout (seconds)                        |
+
+Sensors are specified with subsections `[[Sensor1]]`, `[[Sensor2]]`, etc.
+There is no limit on the number of sensors, but the numbering must start
+at 1 and be consecutive (a gap ends the scan).  On each polling round
+(every 5 seconds), sensors are interrogated low numbers to high; the
+first one that yields a sane, fresh reading wins and no further sensors
+are tried.
+
+A reading is considered fresh for one archive interval; stale readings
+are never inserted into loop packets.
+
+# Using weewx-airlink fields in reports
+
+Current values:
+
+```
+$current.pm1_0
 $current.pm2_5
-```
-
-To show the Air Quality Index:
-```
+$current.pm10_0
 $current.pm2_5_aqi
+$current.pm2_5_aqi_color
 ```
 
-To get the RGBINT color of the current Air Quality Index:
+Aggregates work for both the database-backed fields and the AQI xtypes
+(supported AQI aggregates: `avg`, `min`, `max`, `first`, `last`, `count`):
+
+```
+$day.pm2_5.max
+$week.pm2_5.avg
+$day.pm2_5_aqi.max
+```
+
+Both `pm2_5_aqi` and `pm2_5_aqi_color` can also be graphed, e.g. in
+skin.conf's `[ImageGenerator]` section:
+
+```
+        [[[dayaqi]]]
+            [[[[pm2_5_aqi]]]]
+```
+
+`pm2_5_aqi_color` is an [RGBint](https://www.shodor.org/stella2java/rgbint.html)
+value, useful for displaying the AQI in the color of its category.  To unpack
+it in a Cheetah template:
+
 ```
 #set $color = int($current.pm2_5_aqi_color.raw)
 #set $blue  =  $color & 255
@@ -190,14 +226,36 @@ To get the RGBINT color of the current Air Quality Index:
 #set $red   = ($color >> 16) & 255
 ```
 
-To show the PM1.0 reading, use the following:
-```
-$current.pm1_0
-```
+# Troubleshooting
 
-To show the PM10.0 reading, use the following:
+* `AirLink extension is inoperable` in the log: no source has
+  `enable = true` in `[AirLink]`.
+* `Found no fresh concentrations to insert.`: the sensor has stopped
+  answering (or is answering with stale or insane readings).  Logged once
+  per outage; `Fresh concentrations available again.` is logged on
+  recovery.
+* `Reading not sane: ...`: the reason and the offending reading are
+  included in the message.
+* To smoke test the sanity checker without a sensor:
+
+  ```
+  PYTHONPATH=<weewx-bin-dir> python bin/user/airlink.py --test-is-sane
+  ```
+
+* To watch what the collector sees, run the module directly against a
+  sensor:
+
+  ```
+  PYTHONPATH=<weewx-bin-dir> python bin/user/airlink.py --test-extension --hostname <sensor> [--port <port>]
+  ```
+
+# Running the test suite
+
+The tests are hermetic (no sensor or network required).  From a Python
+environment with WeeWX installed:
+
 ```
-$current.pm10_0
+PYTHONPATH=bin python -m pytest tests
 ```
 
 ## Licensing

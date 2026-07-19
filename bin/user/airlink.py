@@ -18,6 +18,7 @@
 WeeWX module that records AirLink air quality sensor readings.
 """
 
+import json
 import logging
 import math
 import requests
@@ -26,8 +27,9 @@ import threading
 import time
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+import weeutil.logger
 import weeutil.weeutil
 import weewx
 import weewx.units
@@ -41,7 +43,7 @@ from weewx.engine import StdService
 
 log = logging.getLogger(__name__)
 
-WEEWX_AIRLINK_VERSION = "1.4"
+WEEWX_AIRLINK_VERSION = "2.0"
 
 if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 7):
     raise weewx.UnsupportedFeature(
@@ -74,6 +76,10 @@ weewx.units.obs_group_dict['pm2_5_aqi_color'] = 'air_quality_color'
 weewx.units.obs_group_dict['pm2_5_1m'] = 'group_concentration'
 weewx.units.obs_group_dict['pm2_5_1m_aqi'] = 'air_quality_index'
 weewx.units.obs_group_dict['pm2_5_1m_aqi_color'] = 'air_quality_color'
+weewx.units.obs_group_dict['pm2_5_nowcast'] = 'group_concentration'
+weewx.units.obs_group_dict['pm2_5_nowcast_aqi'] = 'air_quality_index'
+weewx.units.obs_group_dict['pm2_5_nowcast_aqi_color'] = 'air_quality_color'
+weewx.units.obs_group_dict['pm10_0_nowcast'] = 'group_concentration'
 
 class Source:
     def __init__(self, config_dict, name):
@@ -101,11 +107,21 @@ class Concentrations:
 @dataclass
 class Configuration:
     lock            : threading.Lock
-    concentrations  : Concentrations # Controlled by lock
-    archive_interval: int            # Immutable
-    archive_delay   : int            # Immutable
-    poll_interval   : int            # Immutable
-    sources         : List[Source]   # Immutable
+    concentrations  : Optional[Concentrations] # Controlled by lock
+    stale_logged    : bool                     # Controlled by lock
+    archive_interval: int                      # Immutable
+    poll_interval   : int                      # Immutable
+    sources         : List[Source]             # Immutable
+
+def reraise_if_terminate(e: BaseException) -> None:
+    """weewxd stops by raising Terminate from its SIGTERM signal handler --
+    inside whatever the main thread is executing at that instant.  Every
+    broad exception handler on a main-thread path must call this first and
+    hand the exception back, or weewx cannot shut down.  weewxd runs as
+    __main__, so its Terminate class cannot be imported here and is
+    recognized by name."""
+    if type(e).__name__ == 'Terminate':
+        raise e
 
 def get_concentrations(cfg: Configuration):
     for source in cfg.sources:
@@ -154,6 +170,7 @@ def is_type(j: Dict[str, Any], t, name: str, none_ok: bool = False) -> bool:
         log.debug('is_type: could not find key: %s' % e)
         return False
     except Exception as e:
+        reraise_if_terminate(e)
         log.debug('is_type: exception: %s' % e)
         return False
 
@@ -174,6 +191,7 @@ def convert_data_structure_type_5_to_6(j: Dict[str, Any]) -> None:
         j['data']['conditions'][0]['data_structure_type'] = 6
         log.debug('Converted type 5 record to type 6.')
     except Exception as e:
+        reraise_if_terminate(e)
         log.info('convert_data_structure_type_5_to_6: exception: %s' % e)
         # Let sanity check handle the issue.
 
@@ -285,6 +303,7 @@ def collect_data(hostname, port, timeout, archive_interval):
                              % (hostname, age_of_reading, j))
                 j = None
     except Exception as e:
+        reraise_if_terminate(e)
         log.info('collect_data: Attempt to fetch from: %s failed: %s.' % (hostname, e))
         j = None
 
@@ -361,12 +380,10 @@ class AirLink(StdService):
         self.cfg = Configuration(
             lock             = threading.Lock(),
             concentrations   = None,
+            stale_logged     = False,
             archive_interval = int(config_dict['StdArchive']['archive_interval']),
-            archive_delay    = to_int(config_dict['StdArchive'].get('archive_delay', 15)),
             poll_interval    = 5,
             sources          = AirLink.configure_sources(self.config_dict))
-        with self.cfg.lock:
-            self.cfg.concentrations = get_concentrations(self.cfg)
 
         source_count = 0
         for source in self.cfg.sources:
@@ -380,11 +397,12 @@ class AirLink(StdService):
         else:
             weewx.xtypes.xtypes.append(AQI())
 
+            with self.cfg.lock:
+                self.cfg.concentrations = get_concentrations(self.cfg)
+
             # Start a thread to query devices.
             dp: DevicePoller = DevicePoller(self.cfg)
-            t: threading.Thread = threading.Thread(target=dp.poll_device)
-            t.setName('AirLink')
-            t.setDaemon(True)
+            t: threading.Thread = threading.Thread(target=dp.poll_device, name='AirLink', daemon=True)
             t.start()
 
             self.bind(weewx.NEW_LOOP_PACKET, self.new_loop_packet)
@@ -401,6 +419,9 @@ class AirLink(StdService):
                     cfg.concentrations.timestamp is not None and \
                     cfg.concentrations.timestamp + \
                     cfg.archive_interval >= time.time():
+                if cfg.stale_logged:
+                    log.info('Fresh concentrations available again.')
+                    cfg.stale_logged = False
                 log.debug('Time of reading being inserted: %s' % timestamp_to_string(cfg.concentrations.timestamp))
                 # Insert pm1_0, pm2_5, pm10_0, aqi and aqic into loop packet.
                 if cfg.concentrations.pm_1_last is not None:
@@ -445,7 +466,12 @@ class AirLink(StdService):
                 if cfg.concentrations.pm_10_nowcast is not None:
                     packet['pm10_0_nowcast'] = cfg.concentrations.pm_10_nowcast
             else:
-                log.error('Found no concentrations to insert.')
+                # Log at error level once per outage, not once per loop packet.
+                if not cfg.stale_logged:
+                    log.error('Found no fresh concentrations to insert.')
+                    cfg.stale_logged = True
+                else:
+                    log.debug('Found no fresh concentrations to insert.')
 
     def configure_sources(config_dict):
         sources = []
@@ -491,107 +517,128 @@ class AQI(weewx.xtypes.XType):
         pass
 
     agg_sql_dict = {
-        'avg': "SELECT AVG(pm2_5), usUnits FROM %(table_name)s "
+        'avg': "SELECT AVG(pm2_5), MIN(usUnits) FROM %(table_name)s "
                "WHERE dateTime > %(start)s AND dateTime <= %(stop)s AND pm2_5 IS NOT NULL",
-        'count': "SELECT COUNT(dateTime), usUnits FROM %(table_name)s "
+        'count': "SELECT COUNT(dateTime), MIN(usUnits) FROM %(table_name)s "
                  "WHERE dateTime > %(start)s AND dateTime <= %(stop)s AND pm2_5 IS NOT NULL",
         'first': "SELECT pm2_5, usUnits FROM %(table_name)s "
                  "WHERE dateTime = (SELECT MIN(dateTime) FROM %(table_name)s "
-                 "WHERE dateTime > %(start)s AND dateTime <= %(stop)s AND pm2_5 IS NOT NULL",
+                 "WHERE dateTime > %(start)s AND dateTime <= %(stop)s AND pm2_5 IS NOT NULL)",
         'last': "SELECT pm2_5, usUnits FROM %(table_name)s "
                 "WHERE dateTime = (SELECT MAX(dateTime) FROM %(table_name)s "
-                "WHERE dateTime > %(start)s AND dateTime <= %(stop)s AND pm2_5 IS NOT NULL",
+                "WHERE dateTime > %(start)s AND dateTime <= %(stop)s AND pm2_5 IS NOT NULL)",
         'min': "SELECT pm2_5, usUnits FROM %(table_name)s "
                "WHERE dateTime > %(start)s AND dateTime <= %(stop)s AND pm2_5 IS NOT NULL "
                "ORDER BY pm2_5 ASC LIMIT 1;",
         'max': "SELECT pm2_5, usUnits FROM %(table_name)s "
                "WHERE dateTime > %(start)s AND dateTime <= %(stop)s AND pm2_5 IS NOT NULL "
                "ORDER BY pm2_5 DESC LIMIT 1;",
-        'sum': "SELECT SUM(pm2_5), usUnits FROM %(table_name)s "
-               "WHERE dateTime > %(start)s AND dateTime <= %(stop)s AND pm2_5 IS NOT NULL)",
+    }
+
+    day_boundary_avg_min_max_sql_dict = {
+        'usUnits': "SELECT usUnits from %(table_name)s ORDER BY dateTime DESC LIMIT 1;",
+        'avg'    : "SELECT sum(wsum) / sum(sumtime) FROM %(table_name)s%(pm2_5_summary_suffix)s "
+                   "WHERE dateTime >= %(start)s AND dateTime < %(stop)s ",
+        'min'    : "SELECT min FROM %(table_name)s%(pm2_5_summary_suffix)s "
+                   "WHERE dateTime >= %(start)s AND dateTime < %(stop)s "
+                   "ORDER BY min ASC LIMIT 1;",
+        'max'    : "SELECT max FROM %(table_name)s%(pm2_5_summary_suffix)s "
+                   "WHERE dateTime >= %(start)s AND dateTime < %(stop)s "
+                   "ORDER BY max DESC LIMIT 1;",
+    }
+
+    # Maps each supported AQI observation type to the observation it is
+    # computed from.  Only pm2_5 is a database column; the 1m and nowcast
+    # observations exist only in loop packets, so their AQI types resolve
+    # only against a record that carries them.
+    aqi_source_field = {
+        'pm2_5_aqi'              : 'pm2_5',
+        'pm2_5_aqi_color'        : 'pm2_5',
+        'pm2_5_1m_aqi'           : 'pm2_5_1m',
+        'pm2_5_1m_aqi_color'     : 'pm2_5_1m',
+        'pm2_5_nowcast_aqi'      : 'pm2_5_nowcast',
+        'pm2_5_nowcast_aqi_color': 'pm2_5_nowcast',
     }
 
     @staticmethod
     def compute_pm2_5_aqi(pm2_5):
-        #             U.S. EPA PM2.5 AQI
+        #             U.S. EPA PM2.5 AQI (May 2024 AirNow TAD)
         #
         #  AQI Category  AQI Value  24-hr PM2.5
-        # Good             0 -  50    0.0 -  12.0
-        # Moderate        51 - 100   12.1 -  35.4
+        # Good             0 -  50    0.0 -   9.0
+        # Moderate        51 - 100    9.1 -  35.4
         # USG            101 - 150   35.5 -  55.4
-        # Unhealthy      151 - 200   55.5 - 150.4
-        # Very Unhealthy 201 - 300  150.5 - 250.4
-        # Hazardous      301 - 400  250.5 - 350.4
-        # Hazardous      401 - 500  350.5 - 500.4
-
-        if pm2_5 is None:
-            return None
+        # Unhealthy      151 - 200   55.5 - 125.4
+        # Very Unhealthy 201 - 300  125.5 - 225.4
+        # Hazardous      301 - 500  225.5 - 325.4
+        #
+        # Concentrations above 325.4 map to AQI values above 500, continuing
+        # on the Hazardous slope (TAD breakpoint-table footnote 4 and the
+        # "AQI values above 500" FAQ).  There is no upper cap.
 
         # The EPA standard for AQI says to truncate PM2.5 to one decimal place.
         # See https://www3.epa.gov/airnow/aqi-technical-assistance-document-sept2018.pdf
         x = math.trunc(pm2_5 * 10) / 10
 
-        if x <= 12.0: # Good
-            return round(x / 12.0 * 50)
+        if x <= 9.0: # Good
+            aqi = round(x / 9.0 * 50)
         elif x <= 35.4: # Moderate
-            return round((x - 12.1) / 23.3 * 49.0 + 51.0)
-        elif x <= 55.4: # Unhealthy for senstive
-            return round((x - 35.5) / 19.9 * 49.0 + 101.0)
-        elif x <= 150.4: # Unhealthy
-            return round((x - 55.5) / 94.9 * 49.0 + 151.0)
-        elif x <= 250.4: # Very Unhealthy
-            return round((x - 150.5) / 99.9 * 99.0 + 201.0)
-        elif x <= 350.4: # Hazardous
-            return round((x - 250.5) / 99.9 * 99.0 + 301.0)
+            aqi = round((x - 9.1) / 26.3 * 49.0 + 51.0)
+        elif x <= 55.4: # Unhealthy for sensitive groups
+            aqi = round((x - 35.5) / 19.9 * 49.0 + 101.0)
+        elif x <= 125.4: # Unhealthy
+            aqi = round((x - 55.5) / 69.9 * 49.0 + 151.0)
+        elif x <= 225.4: # Very Unhealthy
+            aqi = round((x - 125.5) / 99.9 * 99.0 + 201.0)
         else: # Hazardous
-            return round((x - 350.5) / 149.9 * 99.0 + 401.0)
+            aqi = round((x - 225.5) / 99.9 * 199.0 + 301.0)
+
+        # A negative pm2_5 (only possible if a bogus value reached the
+        # database by some other means) must not map below zero.
+        return max(0, aqi)
 
     @staticmethod
     def compute_pm2_5_aqi_color(pm2_5_aqi):
-        if pm2_5_aqi is None:
-            return None
-
         if pm2_5_aqi <= 50:
-            return 128 << 8                 # Green
+            return 228 << 8                      # Green
         elif pm2_5_aqi <= 100:
-            return (255 << 16) + (255 << 8) # Yellow
+            return (255 << 16) + (255 << 8)      # Yellow
         elif pm2_5_aqi <=  150:
-            return (255 << 16) + (140 << 8) # Orange
+            return (255 << 16) + (126 << 8)      # Orange
         elif pm2_5_aqi <= 200:
-            return 255 << 16                # Red
+            return 255 << 16                     # Red
         elif pm2_5_aqi <= 300:
-            return (128 << 16) + 128        # Purple
+            return (143 << 16) + (63 << 8) + 151 # Purple
         else:
-            return 128 << 16                # Maroon
+            return (126 << 16) + 35              # Maroon
 
     @staticmethod
     def get_scalar(obs_type, record, db_manager=None):
         log.debug('get_scalar(%s)' % obs_type)
-        if obs_type not in [ 'pm2_5_aqi', 'pm2_5_aqi_color' ]:
+        if obs_type not in AQI.aqi_source_field:
             raise weewx.UnknownType(obs_type)
-        log.debug('get_scalar(%s)' % obs_type)
         if record is None:
             log.debug('get_scalar called where record is None.')
             raise weewx.CannotCalculate(obs_type)
-        if 'pm2_5' not in record:
-            # Should not see this as pm2_5 is part of the extended schema that is required for this plugin.
+        source_field = AQI.aqi_source_field[obs_type]
+        if source_field not in record:
             # Returning CannotCalculate causes exception in ImageGenerator, return UnknownType instead.
             # ERROR weewx.reportengine: Caught unrecoverable exception in generator 'weewx.imagegenerator.ImageGenerator'
-            log.info('get_scalar called where record does not contain pm2_5.  This is unexpected.')
+            log.debug('get_scalar called where record does not contain %s.' % source_field)
             raise weewx.UnknownType(obs_type)
-        if record['pm2_5'] is None:
+        if record[source_field] is None:
             # Returning CannotCalculate causes exception in ImageGenerator, return UnknownType instead.
             # ERROR weewx.reportengine: Caught unrecoverable exception in generator 'weewx.imagegenerator.ImageGenerator'
             # Any archive catchup records will have None for pm2_5.
-            log.debug('get_scalar called where record[pm2_5] is None: %s.  Probably a catchup record.' %
-                timestamp_to_string(record['dateTime']))
+            log.debug('get_scalar called where record[%s] is None.  Probably a catchup record.' %
+                source_field)
             raise weewx.UnknownType(obs_type)
         try:
-            pm2_5 = record['pm2_5']
-            if obs_type == 'pm2_5_aqi':
-                value = AQI.compute_pm2_5_aqi(pm2_5)
-            if obs_type == 'pm2_5_aqi_color':
+            pm2_5 = record[source_field]
+            if obs_type.endswith('_color'):
                 value = AQI.compute_pm2_5_aqi_color(AQI.compute_pm2_5_aqi(pm2_5))
+            else:
+                value = AQI.compute_pm2_5_aqi(pm2_5)
             t, g = weewx.units.getStandardUnitType(record['usUnits'], obs_type)
             # Form the ValueTuple and return it:
             return weewx.units.ValueTuple(value, t, g)
@@ -639,7 +686,7 @@ class AQI(weewx.xtypes.XType):
 
                 if obs_type == 'pm2_5_aqi':
                     value = AQI.compute_pm2_5_aqi(pm2_5)
-                if obs_type == 'pm2_5_aqi_color':
+                else: # pm2_5_aqi_color
                     value = AQI.compute_pm2_5_aqi_color(AQI.compute_pm2_5_aqi(pm2_5))
                 log.debug('get_series(%s): %s - %s - %s' % (obs_type,
                     timestamp_to_string(ts - interval * 60),
@@ -658,16 +705,18 @@ class AQI(weewx.xtypes.XType):
     @staticmethod
     def get_aggregate(obs_type, timespan, aggregate_type, db_manager, **option_dict):
         """Returns an aggregation of pm2_5_aqi over a timespan by using the main archive
-        table.
+        table (or, for whole-day spans, the pm2_5 daily summary table).
 
-        obs_type
+        obs_type: Must be 'pm2_5_aqi' or 'pm2_5_aqi_color'.
 
         timespan: An instance of weeutil.Timespan with the time period over which aggregation is to
         be done.
 
         aggregate_type: The type of aggregation to be done. For this function, must be 'avg',
-        'sum', 'count', 'first', 'last', 'min', or 'max'. Anything else will cause
-        weewx.UnknownAggregation to be raised.
+        'count', 'first', 'last', 'min', or 'max'. Anything else will cause
+        weewx.UnknownAggregation to be raised.  ('sum' is deliberately not
+        supported: the AQI of summed concentrations is not a meaningful
+        quantity.)
 
         db_manager: An instance of weewx.manager.Manager or subclass.
 
@@ -692,21 +741,48 @@ class AQI(weewx.xtypes.XType):
         interpolation_dict = {
             'start': timespan.start,
             'stop': timespan.stop,
-            'table_name': db_manager.table_name
+            'table_name': db_manager.table_name,
+            'pm2_5_summary_suffix': '_day_pm2_5'
         }
 
-        select_stmt = AQI.agg_sql_dict[aggregate_type] % interpolation_dict
+        # The daily summary table can only be used if the timespan covers
+        # whole archive days: both endpoints on local midnight.  A span
+        # whose length merely happens to be a multiple of 24 hours (e.g.,
+        # a trailing 24-hour window) must use the regular archive table.
+        on_day_boundary = (timespan.start != timespan.stop
+                           and weeutil.weeutil.isStartOfDay(timespan.start)
+                           and weeutil.weeutil.isStartOfDay(timespan.stop))
+        log.debug('day_boundary start: %r stop: %r on_day_boundary: %s' % (
+            timespan.start, timespan.stop, on_day_boundary))
+        if aggregate_type in list(AQI.day_boundary_avg_min_max_sql_dict.keys()) and on_day_boundary:
+            select_stmt = AQI.day_boundary_avg_min_max_sql_dict[aggregate_type] % interpolation_dict
+            select_usunits_stmt = AQI.day_boundary_avg_min_max_sql_dict['usUnits'] % interpolation_dict
+            need_usUnits = True
+        else:
+            select_stmt = AQI.agg_sql_dict[aggregate_type] % interpolation_dict
+            need_usUnits = False
+        if need_usUnits:
+            row = db_manager.getSql(select_usunits_stmt)
+            if row:
+                std_unit_system, = row
+            else:
+                std_unit_system = None
         row = db_manager.getSql(select_stmt)
         if row:
-            value, std_unit_system = row
+            if need_usUnits:
+                value, = row
+            else:
+                value, std_unit_system = row
         else:
             value = None
             std_unit_system = None
 
-        if value is not None:
+        # A count is a count of records; every other aggregate is a pm2_5
+        # concentration that must be converted to an AQI (or color).
+        if value is not None and aggregate_type != 'count':
             if obs_type == 'pm2_5_aqi':
                 value = AQI.compute_pm2_5_aqi(value)
-            if obs_type == 'pm2_5_aqi_color':
+            else: # pm2_5_aqi_color
                 value = AQI.compute_pm2_5_aqi_color(AQI.compute_pm2_5_aqi(value))
         t, g = weewx.units.getStandardUnitType(std_unit_system, obs_type, aggregate_type)
         # Form the ValueTuple and return it:
@@ -726,28 +802,32 @@ if __name__ == "__main__":
         parser.add_option('--config', dest='cfgfn', type=str, metavar="FILE",
                           help="Use configuration file FILE. Default is /etc/weewx/weewx.conf or /home/weewx/weewx.conf")
         parser.add_option('--test-extension', dest='te', action='store_true',
-                          help='test the data collector')
+                          help='test the data collector (requires a live AirLink sensor)')
+        parser.add_option('--test-is-sane', dest='sane_test', action='store_true',
+                          help='test the is_sane function (no sensor needed)')
         parser.add_option('--hostname', dest='hostname', action='store',
-                          help='hostname to use with --test-collector')
+                          help='hostname to use with --test-extension')
         parser.add_option('--port', dest='port', action='store',
                           type=int, default=80,
-                          help="port to use with --test-collector. Default is '80'")
+                          help="port to use with --test-extension. Default is '80'")
         (options, args) = parser.parse_args()
 
         weeutil.logger.setup('airlink', {})
 
         if options.te:
             if not options.hostname:
-                parser.error('--test-collector requires --hostname argument')
+                parser.error('--test-extension requires --hostname argument')
             test_extension(options.hostname, options.port)
+        if options.sane_test:
+            test_is_sane()
 
     def test_extension(hostname, port):
         sources = [Source({'Sensor1': { 'enable': True, 'hostname': hostname, 'port': port, 'timeout': 2}}, 'Sensor1')]
         cfg = Configuration(
             lock             = threading.Lock(),
             concentrations   = None,
+            stale_logged     = False,
             archive_interval = 300,
-            archive_delay    = 15,
             poll_interval    = 5,
             sources          = sources)
         while True:
@@ -758,5 +838,50 @@ if __name__ == "__main__":
             AirLink.fill_in_packet(cfg, packet)
             print('Fields to be inserted into packet: %s' % packet)
             time.sleep(cfg.poll_interval)
+
+    def test_is_sane():
+        # A type-6 response as captured from a real AirLink.
+        good_type_6 = ('{"data": {"did": "001D0A100214", "name": "airlink", "ts": 1602389498,'
+            ' "conditions": [{"lsid": 349506, "data_structure_type": 6, "temp": 67.7,'
+            ' "hum": 72.2, "dew_point": 58.4, "wet_bulb": 61.2, "heat_index": 68.1,'
+            ' "pm_1_last": 0, "pm_2p5_last": 0, "pm_10_last": 0, "pm_1": 0.0,'
+            ' "pm_2p5": 0.0, "pm_2p5_last_1_hour": 0.13, "pm_2p5_last_3_hours": 0.27,'
+            ' "pm_2p5_last_24_hours": 0.43, "pm_2p5_nowcast": 0.23, "pm_10": 1.09,'
+            ' "pm_10_last_1_hour": 0.64, "pm_10_last_3_hours": 0.89,'
+            ' "pm_10_last_24_hours": 1.02, "pm_10_nowcast": 0.84,'
+            ' "last_report_time": 1602389497, "pct_pm_data_last_1_hour": 100,'
+            ' "pct_pm_data_last_3_hours": 100, "pct_pm_data_nowcast": 100,'
+            ' "pct_pm_data_last_24_hours": 100}]}, "error": null}')
+        # A type-5 response (early firmware): pm_10p0* field names.
+        good_type_5 = ('{"data": {"did": "001D0A1000AF", "name": "LusherClose Sheringham",'
+            ' "ts": 1601320120, "conditions": [{"lsid": 349639, "data_structure_type": 5,'
+            ' "temp": 59.0, "hum": 69.3, "dew_point": 48.9, "wet_bulb": 52.6,'
+            ' "heat_index": 58.1, "pm_1_last": 0, "pm_2p5_last": 0, "pm_10_last": 1,'
+            ' "pm_1": 0.61, "pm_2p5": 0.61, "pm_2p5_last_1_hour": 1.07,'
+            ' "pm_2p5_last_3_hours": 1.25, "pm_2p5_last_24_hours": 1.25,'
+            ' "pm_2p5_nowcast": 1.2, "pm_10p0": 3.3, "pm_10p0_last_1_hour": 1.9,'
+            ' "pm_10p0_last_3_hours": 2.52, "pm_10p0_last_24_hours": 2.52,'
+            ' "pm_10p0_nowcast": 2.27, "last_report_time": 1601320120,'
+            ' "pct_pm_data_last_1_hour": 100, "pct_pm_data_last_3_hours": 95,'
+            ' "pct_pm_data_nowcast": 23, "pct_pm_data_last_24_hours": 11}]},'
+            ' "error": null}')
+        j = json.loads(good_type_6)
+        sane, reason = is_sane(j)
+        assert sane, reason
+        j = json.loads(good_type_5)
+        convert_data_structure_type_5_to_6(j)
+        sane, reason = is_sane(j)
+        assert sane, reason
+        # A malformed reading (non-numeric pm_1) must not be sane.
+        j = json.loads(good_type_6)
+        j['data']['conditions'][0]['pm_1'] = 'abc'
+        sane, _ = is_sane(j)
+        assert not sane
+        # An error response must not be sane.
+        j = json.loads(good_type_6)
+        j['error'] = {'code': 409, 'message': 'Error'}
+        sane, _ = is_sane(j)
+        assert not sane
+        print('is_sane tests passed.')
 
     main()

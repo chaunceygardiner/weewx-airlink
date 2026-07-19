@@ -127,3 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Claude files must never be checked in (public repo)
+CLAUDE.md
+.claude/

@@ -1,6 +1,57 @@
 weewx-airlink change history
 ----------------------------
 
+2.0 07/18/2026
+--------------
+Action required: none for typical installs.  If a report used
+$span.pm2_5_aqi.sum, remove it (see below).
+
+- AQI now conforms to the 2024 EPA definition (May 2024 AirNow Technical
+  Assistance Document).  The old code used the pre-2024 breakpoints; AQI
+  values shift across the whole scale.  Good now ends at 9.0 ug/m^3 (was
+  12.0), Unhealthy at 125.4 (was 150.4), Very Unhealthy at 225.4 (was
+  250.4), and AQI 500 is anchored at 325.4 (was 500.4; TAD breakpoint-table
+  footnote 4).  As before, values above 500 continue on the same slope
+  with no cap.  Because AQI is computed on demand from stored pm2_5,
+  history re-renders with the new values automatically.
+- pm2_5_aqi_color now uses the EPA-defined category RGB colors (e.g.,
+  green is (0,228,0) instead of (0,128,0)).
+- weewx could fail to shut down if SIGTERM arrived while AirLink was
+  fetching the first sensor reading at startup: the fetch's broad
+  exception handlers swallowed weewxd's Terminate.  Shutdown is now
+  passed through.
+- The 'first' and 'last' aggregates of pm2_5_aqi/pm2_5_aqi_color produced
+  invalid SQL and always failed.  Fixed.
+- The 'count' aggregate of pm2_5_aqi returned the AQI *of the record count*
+  rather than the count.  It now returns the count.
+- The 'sum' aggregate of pm2_5_aqi is no longer accepted: the AQI of summed
+  concentrations is not a meaningful quantity.  (Its SQL was invalid anyway,
+  so it never actually worked.)
+- The 'avg' and 'count' aggregate SQL selected a bare usUnits column next
+  to an aggregate function, which breaks MySQL's ONLY_FULL_GROUP_BY mode.
+- AQI aggregates (avg/min/max) over whole archive days now use the pm2_5
+  daily summary table -- much faster on large databases.  The fast path
+  requires both span endpoints on local midnight, so a trailing 24-hour
+  window still (correctly) uses the archive table.
+- The AQI xtype now resolves every registered AQI type (pm2_5_1m_aqi,
+  pm2_5_nowcast_aqi and their colors, previously only pm2_5_aqi) against
+  a record that carries the source field, and the nowcast observation
+  types are now registered in the unit system (labels and formats work).
+- 'Found no fresh concentrations to insert' is now logged once per outage
+  instead of on every loop packet; recovery is logged.
+- Replaced the deprecated threading setName/setDaemon calls (removed in
+  Python 3.13) with Thread constructor arguments.
+- Removed the dead archive_delay configuration plumbing (read but never
+  used).
+- Added an offline --test-is-sane harness (no sensor needed);
+  --test-extension is unchanged.
+- Tests moved to tests/ at the top level and expanded from 3 to 91 (97%
+  branch coverage; uncovered: only the poller loop and import-time version
+  guards); all aggregation SQL now executes against a real database in
+  the tests.
+- README rewritten.  (Also: this extension does not use python-dateutil;
+  the old install instructions required it unnecessarily.)
+
 1.4 05/30/2024
 Fix broken install.
 

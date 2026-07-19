@@ -1,0 +1,12 @@
+# Coverage config for the weewx-airlink test suite:
+#   PYTHONPATH=bin python -m coverage run -m pytest tests && python -m coverage report -m
+[run]
+branch = True
+include = */user/airlink.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    # The __main__ block is the manual harness (--test-is-sane /
+    # --test-extension); it only runs as a script.
+    if __name__ == .__main__.:

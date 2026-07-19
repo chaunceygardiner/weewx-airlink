@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import weeutil.logger
 import weeutil.weeutil
 import weewx
+import weewx.accum
 import weewx.units
 import weewx.xtypes
 
@@ -43,7 +44,7 @@ from weewx.engine import StdService
 
 log = logging.getLogger(__name__)
 
-WEEWX_AIRLINK_VERSION = "2.0"
+WEEWX_AIRLINK_VERSION = "2.0.1"
 
 if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 7):
     raise weewx.UnsupportedFeature(
@@ -396,6 +397,7 @@ class AirLink(StdService):
             log.error('No sources configured for airlink extension.  AirLink extension is inoperable.')
         else:
             weewx.xtypes.xtypes.append(AQI())
+            AQI.register_accumulator_extractors()
 
             with self.cfg.lock:
                 self.cfg.concentrations = get_concentrations(self.cfg)
@@ -559,6 +561,20 @@ class AQI(weewx.xtypes.XType):
         'pm2_5_nowcast_aqi'      : 'pm2_5_nowcast',
         'pm2_5_nowcast_aqi_color': 'pm2_5_nowcast',
     }
+
+    @staticmethod
+    def register_accumulator_extractors() -> None:
+        """Tell the accumulator not to extract the loop-injected AQI fields
+        into archive records.  fill_in_packet computes AQI per loop packet
+        under the same names this xtype serves; without this, WeeWX's default
+        avg extractor would fold a meaningless averaged AQI into the archive
+        record, and $current would use it instead of the xtype during
+        real-time report generation.  extractor = noop drops the fields so
+        lookups fall through to the xtype -- the same pattern WeeWX's own
+        defaults use for windSpeed.  A user's [Accumulator] section takes
+        precedence over these entries."""
+        weewx.accum.accum_dict.extend(
+            {obs_type: {'extractor': 'noop'} for obs_type in AQI.aqi_source_field})
 
     @staticmethod
     def compute_pm2_5_aqi(pm2_5):

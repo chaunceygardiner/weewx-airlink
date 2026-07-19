@@ -226,6 +226,33 @@ it in a Cheetah template:
 #set $red   = ($color >> 16) & 255
 ```
 
+## How AQI values are computed (and stored)
+
+AQI is always computed on demand from the stored `pm2_5` concentration —
+there is no AQI column in the database, and none is needed: `$current`,
+aggregates and graphs all resolve through the extension's AQI xtype.  For
+real-time consumers (e.g., MQTT), the AQI fields are also present in
+every LOOP packet.
+
+To keep the on-demand computation authoritative, the extension registers
+`extractor = noop` for the six AQI/color fields so that WeeWX's
+accumulator does not average them into archive records (averaging AQI
+values is meaningless, since AQI is a non-linear transform of
+concentration).  An `[Accumulator]` section in weewx.conf takes
+precedence if you deliberately want different behavior.
+
+If you added a `pm2_5_aqi` (or `pm2_5_aqi_color`) column to your database
+schema — e.g., to feed Grafana directly — the accumulator no longer fills
+it; have WeeWX compute it through the xtype instead, which stores
+correctly EPA-rounded values:
+
+```
+[StdWXCalculate]
+    [[Calculations]]
+        pm2_5_aqi = prefer_hardware
+        pm2_5_aqi_color = prefer_hardware
+```
+
 # Troubleshooting
 
 * `AirLink extension is inoperable` in the log: no source has

@@ -19,6 +19,7 @@ from unittest import mock
 import weeutil.logger
 import weeutil.weeutil
 import weewx
+import weewx.accum
 import weewx.units
 import weewx.xtypes
 
@@ -756,6 +757,7 @@ class TestAirLinkInit(unittest.TestCase):
         }
         conc = fresh_concentrations()
         n_xtypes = len(weewx.xtypes.xtypes)
+        orig_accum_maps = list(weewx.accum.accum_dict.maps)
         try:
             with mock.patch('user.airlink.get_concentrations', return_value=conc) as gc, \
                  mock.patch('user.airlink.threading.Thread') as thread_cls:
@@ -769,6 +771,10 @@ class TestAirLinkInit(unittest.TestCase):
             # The AQI xtype is registered.
             self.assertEqual(len(weewx.xtypes.xtypes), n_xtypes + 1)
             self.assertIsInstance(weewx.xtypes.xtypes[-1], AQI)
+            # The noop accumulator extractors are registered, so the archive
+            # record can't shadow the xtype.
+            self.assertEqual(
+                weewx.accum.accum_dict['pm2_5_aqi'], {'extractor': 'noop'})
             # The poller thread was created as a daemon and started.
             _, kwargs = thread_cls.call_args
             self.assertTrue(kwargs['daemon'])
@@ -777,8 +783,10 @@ class TestAirLinkInit(unittest.TestCase):
             # Bound to NEW_LOOP_PACKET.
             engine.bind.assert_called_once_with(weewx.NEW_LOOP_PACKET, a.new_loop_packet)
         finally:
-            # Unregister anything this test added to the global xtypes list.
+            # Unregister anything this test added to the global xtypes list
+            # and the global accumulator config.
             del weewx.xtypes.xtypes[n_xtypes:]
+            weewx.accum.accum_dict.maps[:] = orig_accum_maps
 
     def test_startup_without_sources_is_inoperable(self):
         engine = mock.Mock()
@@ -804,6 +812,59 @@ class TestAirLinkInit(unittest.TestCase):
         event = Event()
         a.new_loop_packet(event)
         self.assertIn('pm2_5', event.packet)
+
+class TestAccumulatorExtractors(unittest.TestCase):
+    """The accumulator must not fold the loop-injected AQI fields into
+    archive records: WeeWX's default avg extractor would average the
+    already-rounded AQI integers (a meaningless quantity), and during
+    real-time report generation $current uses the archive record directly,
+    shadowing the AQI xtype.  extractor = noop drops the fields so lookups
+    fall through to the xtype."""
+
+    def setUp(self):
+        self.orig_accum_maps = list(weewx.accum.accum_dict.maps)
+
+    def tearDown(self):
+        weewx.accum.accum_dict.maps[:] = self.orig_accum_maps
+
+    def test_noop_extractor_registered_for_full_aqi_family(self):
+        AQI.register_accumulator_extractors()
+        for obs_type in AQI.aqi_source_field:
+            self.assertEqual(
+                weewx.accum.accum_dict[obs_type]['extractor'], 'noop')
+
+    def test_aqi_fields_dropped_from_extracted_record(self):
+        AQI.register_accumulator_extractors()
+        accum = weewx.accum.Accum(
+            weeutil.weeutil.TimeSpan(1700000000, 1700000300))
+        # Loop packets whose AQI toggles between 0 and 1: the default avg
+        # extractor would put a bogus fractional AQI in the record.
+        for i, (pm, aqi) in enumerate([(0.05, 0), (0.155, 1), (0.155, 1)]):
+            accum.addRecord({
+                'dateTime': 1700000100 + 5 * i,
+                'usUnits': weewx.US,
+                'pm2_5': pm,
+                'pm2_5_aqi': aqi,
+                'pm2_5_aqi_color': 128 * i,
+            })
+        record = accum.getRecord()
+        # The concentration is extracted (averaged) as before...
+        self.assertAlmostEqual(record['pm2_5'], (0.05 + 0.155 + 0.155) / 3)
+        # ...but the AQI fields are dropped, leaving $current to the xtype.
+        self.assertNotIn('pm2_5_aqi', record)
+        self.assertNotIn('pm2_5_aqi_color', record)
+
+    def test_user_accumulator_config_takes_precedence(self):
+        AQI.register_accumulator_extractors()
+        # weewx.accum.initialize() loads the user's [Accumulator] section in
+        # front of everything else; a user override must win over ours.
+        weewx.accum.initialize(
+            {'Accumulator': {'pm2_5_aqi': {'extractor': 'avg'}}})
+        self.assertEqual(
+            weewx.accum.accum_dict['pm2_5_aqi']['extractor'], 'avg')
+        # Types the user didn't override still get ours.
+        self.assertEqual(
+            weewx.accum.accum_dict['pm2_5_1m_aqi']['extractor'], 'noop')
 
 class TestGetScalar(unittest.TestCase):
     """Every registered AQI observation type resolves against the field it

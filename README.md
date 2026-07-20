@@ -234,6 +234,19 @@ aggregates and graphs all resolve through the extension's AQI xtype.  For
 real-time consumers (e.g., MQTT), the AQI fields are also present in
 every LOOP packet.
 
+There is no performance reason to store AQI (or its color) either, even
+for long-term plots.  For an aggregated plot (e.g., a month of daily
+maxima) the database aggregates the stored `pm2_5` exactly as it would
+aggregate a stored AQI column, and the conversion to AQI and color — a
+single interpolation and a category lookup — runs once per plotted
+point, not once per database row; spans covering whole days are served
+from the `pm2_5` daily-summary table without scanning the archive at
+all.  Converting after aggregation is also the EPA-correct order of
+operations: AQI is a non-linear transform of concentration, so the
+average of per-record AQI values is not the AQI of the average
+concentration (and an averaged RGB color can belong to no EPA category
+at all).
+
 To keep the on-demand computation authoritative, the extension registers
 `extractor = noop` for the six AQI/color fields so that WeeWX's
 accumulator does not average them into archive records (averaging AQI

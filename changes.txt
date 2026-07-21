@@ -1,6 +1,11 @@
 weewx-airlink change history
 ----------------------------
 
+2.x (in development)
+--------------------
+- Insane readings are now logged as warnings (were logged as info).
+- Clean mypy pass.
+
 2.0.1 07/19/2026
 ----------------
 Action required: none for typical installs.  Only if you added a

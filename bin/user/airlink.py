@@ -271,7 +271,7 @@ def collect_data(hostname, port, timeout, archive_interval):
             # Check for sanity
             sane, msg = is_sane(j)
             if not sane:
-                log.info('Reading not sane:  %s (%s)' % (msg, j))
+                log.warning('Reading not sane:  %s (%s)' % (msg, j))
                 return None
             time_of_reading = j['data']['conditions'][0]['last_report_time']
             # The reading could be old.
@@ -850,7 +850,7 @@ if __name__ == "__main__":
             with cfg.lock:
                 cfg.concentrations = get_concentrations(cfg)
             print('%s:%d concentrations: %s' % (cfg.sources[0].hostname, cfg.sources[0].port, cfg.concentrations))
-            packet = {}
+            packet: Dict[str, Any] = {}
             AirLink.fill_in_packet(cfg, packet)
             print('Fields to be inserted into packet: %s' % packet)
             time.sleep(cfg.poll_interval)

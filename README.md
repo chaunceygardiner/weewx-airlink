@@ -99,7 +99,7 @@ A small demo report is installed at `<HTML_ROOT>/airlink`:
 
 [airlink-proxy](https://github.com/chaunceygardiner/airlink-proxy) is an
 optional service that averages sensor readings over the archive period.
-It typically answers on port 8000; point a `[[SensorN]]` section at it.
+It typically answers on port 8040; point a `[[ProxyN]]` section at it.
 If in doubt, skip it and query the AirLink sensor directly.
 
 # Installation
@@ -157,6 +157,11 @@ If in doubt, skip it and query the AirLink sensor directly.
 
 ```
 [AirLink]
+    [[Proxy1]]
+        enable = false
+        hostname = proxy1
+        port = 8040
+        timeout = 1
     [[Sensor1]]
         enable = true
         hostname = airlink
@@ -169,22 +174,98 @@ If in doubt, skip it and query the AirLink sensor directly.
         timeout = 2
 ```
 
-| Option     | Default | Meaning                                       |
-|------------|---------|-----------------------------------------------|
-| `enable`   | false   | Whether this source is polled                 |
-| `hostname` |         | Hostname or IP address of the sensor (or airlink-proxy) |
-| `port`     | 80      | Port to connect on (airlink-proxy: 8000)      |
-| `timeout`  | 10      | HTTP timeout (seconds)                        |
+| Option     | Default          | Meaning                                |
+|------------|------------------|----------------------------------------|
+| `enable`   | false            | Whether this source is polled          |
+| `hostname` |                  | Hostname or IP address of the source   |
+| `port`     | 80 (proxy: 8040) | Port to connect on                     |
+| `timeout`  | 10 (proxy: 1)    | HTTP timeout (seconds)                 |
 
-Sensors are specified with subsections `[[Sensor1]]`, `[[Sensor2]]`, etc.
-There is no limit on the number of sensors, but the numbering must start
-at 1 and be consecutive (a gap ends the scan).  On each polling round
-(every 5 seconds), sensors are interrogated low numbers to high; the
-first one that yields a sane, fresh reading wins and no further sensors
-are tried.
+`timeout` governs every request to that source -- the five-second polling
+that feeds loop packets as well as the archive-record filling described
+below.  One second suits a proxy answering out of its own database on the
+local network; if you move a `[[SensorN]]` to a `[[ProxyN]]` and it is not
+on your local network, set `timeout` explicitly rather than taking the
+default.
+
+Sources are specified with subsections `[[Proxy1]]`, `[[Proxy2]]`, etc. for
+instances of [airlink-proxy](https://github.com/chaunceygardiner/airlink-proxy),
+and `[[Sensor1]]`, `[[Sensor2]]`, etc. for AirLink sensors themselves.  There
+is no limit on the number of either, but each kind's numbering must start at 1
+and be consecutive (a gap ends the scan).  The two kinds differ only in the
+defaults they pick for `port` and `timeout`: a proxy answers out of its own
+database and is expected to answer quickly, while an AirLink's own processor is
+slow and easily overwhelmed.
+
+On each polling round (every 5 seconds), sources are interrogated in order --
+all proxies, low numbers to high, and then all sensors -- and the first one
+that yields a sane, fresh reading wins; no further sources are tried.
+
+Earlier versions had no `[[ProxyN]]` sections, so an airlink-proxy was
+configured as a `[[SensorN]]` with its port set to 8000.  That still works and
+is still polled exactly as before; nothing needs to change on upgrade.
 
 A reading is considered fresh for one archive interval; stale readings
 are never inserted into loop packets.
+
+## Filling in archive records after downtime
+
+While WeeWX is stopped, nothing puts air quality data into loop packets.
+The archive records a logger hands over when WeeWX starts again therefore
+arrive with empty `pm1_0`, `pm2_5` and `pm10_0` columns, and the hole is
+permanent -- in the database and in every graph drawn from it.
+
+If a `[[ProxyN]]` is configured, weewx-airlink fills those records in: for
+each archive period it contributed nothing to, it asks the proxy for the
+archive records covering exactly that period and averages them.  An AirLink
+queried directly keeps no history, so with no proxy configured nothing is
+asked and nothing is logged.
+
+Values written this way are still subject to `[StdQC]` and
+`[StdCalibrate]`.  Those services run in `process_services`, which WeeWX
+loads after the `data_services` this extension installs into, so a
+`[StdQC] [[MinMax]]` limit on `pm2_5` filters a filled-in value exactly as
+it filters a live one, and `[StdCalibrate]` corrections apply to both.
+
+Only `pm1_0`, `pm2_5` and `pm10_0` are filled in.  The 1m and nowcast
+variants are loop-only -- they are not database columns -- and a value is
+only ever written for a period this extension put nothing into, so a period
+WeeWX was up for is never touched.
+
+Two conditions have to hold, and both are checked once per proxy and
+logged when they fail:
+
+* The proxy must speak **airlink-proxy API version 2 or later**, which
+  means airlink-proxy 1.0 or later.  Earlier proxies file the single poll
+  that landed on the archive boundary rather than an average over the
+  interval, which is not what the period contained.
+* The proxy's `archive-interval-secs` must **divide evenly into** WeeWX's
+  `archive_interval`.  A shorter interval is fine -- several of the proxy's
+  records cover one WeeWX period and are averaged together, so a proxy on
+  60 seconds serves a WeeWX archiving every 300.  A longer interval, or one
+  that does not divide, cannot answer for a WeeWX period at all, since the
+  period can fall entirely inside one of the proxy's records.  Rather than
+  fill such a period badly, catch-up is refused and says so in the log.
+
+Both are asked once per proxy and the answer is remembered for as long as
+WeeWX runs.  If you upgrade an airlink-proxy from API version 1 to 2, or
+change its `archive-interval-secs`, **restart WeeWX** -- until you do, the
+extension goes on acting on the answer it got at startup.
+
+For a period that closed within the last two minutes and that no archive
+record covers yet, the proxy's two-minute average is used instead, and
+failing that the reading already in hand.  Both are subject to one rule:
+a reading may fill a period only if it **overlaps** that period.  The
+two-minute average covers the two minutes ending at its freshest sample, so
+it qualifies when that window reaches into the period; the reading in hand
+is a single instantaneous sample, so it qualifies only if it was taken
+inside the period.  A sample taken after the period closed describes a
+moment the period does not contain, however recent it is, and is not used.
+This is also what keeps a proxy's last two-minute average out once the
+AirLink stops answering -- the proxy goes on serving it, but it no longer
+reaches the periods being filled.  Any period further back that no
+proxy holds a record for keeps its empty columns -- that is the honest
+answer, not a failure.
 
 # Using weewx-airlink fields in reports
 
@@ -339,6 +420,21 @@ xtype:
   ```
   PYTHONPATH=<weewx-bin-dir> python bin/user/airlink.py --test-extension --hostname <sensor> [--port <port>]
   ```
+
+* If archive records are not being filled in, ask the proxy the same
+  questions the extension asks it:
+
+  ```
+  PYTHONPATH=<weewx-bin-dir> python bin/user/airlink.py --test-catchup --hostname <proxy> [--port <port>] [--archive-interval <secs>]
+  ```
+
+  It prints the proxy's API version, its archive interval, the earliest
+  record it holds, whether catch-up would use it *and why not* if it would
+  not, the records covering the last archive period with the values that
+  would be filled in, and the two-minute average.  Port defaults to 8040
+  and `--archive-interval` to 300; pass your own `archive_interval` if
+  WeeWX does not archive every five minutes, since that is what the proxy's
+  interval is checked against.
 
 # Running the test suite
 

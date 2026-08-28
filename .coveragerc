@@ -8,5 +8,5 @@ include = */user/airlink.py
 exclude_lines =
     pragma: no cover
     # The __main__ block is the manual harness (--test-is-sane /
-    # --test-extension); it only runs as a script.
+    # --test-extension / --test-catchup); it only runs as a script.
     if __name__ == .__main__.:

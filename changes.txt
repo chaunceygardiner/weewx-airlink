@@ -1,8 +1,31 @@
 weewx-airlink change history
 ----------------------------
 
-2.x (in development)
+3.0 (in development)
 --------------------
+- Archive records for periods WeeWX was down for are now filled in from an
+  airlink-proxy's archive history, so a restart no longer leaves a permanent
+  hole in pm1_0/pm2_5/pm10_0.  Requires a [[ProxyN]] source running
+  airlink-proxy API version 2 or later (airlink-proxy 1.0 or later), whose
+  archive interval divides evenly into WeeWX's; catch-up is refused (and
+  logged) otherwise.  A value is only ever
+  written for an archive period this extension put nothing into, and a period
+  no proxy holds a record for keeps its empty columns.  With no proxy
+  configured nothing is asked and nothing is logged.
+- An airlink-proxy is now configured with its own [[ProxyN]] sections,
+  separate from the [[SensorN]] sections used for AirLink sensors, matching
+  weewx-purple.  A proxy defaults to port 8040 and a one second timeout; a
+  sensor keeps port 80 and a ten second timeout.  Proxies are polled ahead
+  of sensors.  Nothing needs to change on upgrade: an airlink-proxy already
+  configured as a [[SensorN]] with port 8000 keeps working exactly as before.
+- New --test-catchup harness: asks an airlink-proxy the same questions the
+  catch-up path asks it and prints what would be filled into an archive
+  record, so a proxy that is not filling records can be diagnosed without
+  reading the log.
+- The config stanza a fresh install writes into weewx.conf now arrives
+  commented, so each option comes with a line saying what it does and which
+  values are placeholders to replace.  Existing installs are unaffected --
+  weectl only ever fills in absent keys.
 - Insane readings are now logged as warnings (were logged as info).
 - Clean mypy pass.
 

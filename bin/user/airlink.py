@@ -26,7 +26,7 @@ import sys
 import threading
 import time
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 import weeutil.logger
@@ -39,12 +39,13 @@ import weewx.xtypes
 from weewx.units import ValueTuple
 from weeutil.weeutil import timestamp_to_string
 from weeutil.weeutil import to_bool
+from weeutil.weeutil import to_float
 from weeutil.weeutil import to_int
 from weewx.engine import StdService
 
 log = logging.getLogger(__name__)
 
-WEEWX_AIRLINK_VERSION = "2.0.1"
+WEEWX_AIRLINK_VERSION = "3.0"
 
 if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 7):
     raise weewx.UnsupportedFeature(
@@ -82,14 +83,40 @@ weewx.units.obs_group_dict['pm2_5_nowcast_aqi'] = 'air_quality_index'
 weewx.units.obs_group_dict['pm2_5_nowcast_aqi_color'] = 'air_quality_color'
 weewx.units.obs_group_dict['pm10_0_nowcast'] = 'group_concentration'
 
+# The observations this extension can fill into an archive record.  The
+# 1m and nowcast variants are loop-only -- they are not database columns --
+# so there is nothing to fill them into.
+PM_OBS: List[str] = ['pm1_0', 'pm2_5', 'pm10_0']
+
+# The span an airlink-proxy's /fetch-two-minute-record describes.
+TWO_MINUTE_AVERAGE_SECS: int = 120
+
+# The lowest airlink-proxy API command set catch-up can use.  Version 2 is
+# where archive records became averages over their interval (version 1 filed
+# the single poll that landed on the boundary, which does not describe the
+# period), /fetch-two-minute-record arrived, and error bodies became
+# parseable json.  Catch-up needs all three, and they shipped together.
+# A LATER version is accepted: a command set only ever grows, and refusing
+# one would silently disable catch-up for everyone until they restarted
+# weewxd, since the refusal is remembered for the life of the process.
+REQUIRED_PROXY_API_VERSION: int = 2
+
 class Source:
-    def __init__(self, config_dict, name):
+    def __init__(self, config_dict, name, is_proxy):
+        self.is_proxy = is_proxy
         # Raise KeyEror if name not in dictionary.
         source_dict = config_dict[name]
         self.enable = to_bool(source_dict.get('enable', False))
         self.hostname = source_dict.get('hostname', '')
-        self.port = to_int(source_dict.get('port', 80))
-        self.timeout  = to_int(source_dict.get('timeout', 10))
+        if is_proxy:
+            self.port = to_int(source_dict.get('port', 8040))
+            # An airlink-proxy answers out of its own database on the local
+            # network.  One that has not answered in a second is down.
+            self.timeout  = to_int(source_dict.get('timeout', 1))
+        else:
+            self.port = to_int(source_dict.get('port', 80))
+            # The AirLink's own processor is slow and easily overwhelmed.
+            self.timeout  = to_int(source_dict.get('timeout', 10))
 
 @dataclass
 class Concentrations:
@@ -113,6 +140,22 @@ class Configuration:
     archive_interval: int                      # Immutable
     poll_interval   : int                      # Immutable
     sources         : List[Source]             # Immutable
+    # Archive periods this extension put pm data into, per observation.  An
+    # archive record carries no proof of its own: under hardware record
+    # generation the accumulator's values are grafted on AFTER this service's
+    # handler runs, so a missing pm field says nothing about whether the
+    # accumulator is empty.  What this extension injected does say so, and
+    # only this extension knows it.  It lives here rather than on the service
+    # because fill_in_packet, which records it, is a static method.
+    injections      : Dict[str, List[float]] = field(  # Controlled by lock
+        default_factory = lambda: {obs: [] for obs in PM_OBS})
+    # How far back the injection tally is kept.  new_archive_record measures
+    # a period with the interval WeeWX really archives on, which is NOT
+    # archive_interval above when the console disagrees with weewx.conf, so
+    # the tally has to reach at least as far back or a period WeeWX watched
+    # can look unwatched.  The service sets it; None means fall back to
+    # archive_interval, which is what the __main__ harness gets.
+    injection_retention_secs: Optional[int] = None      # Immutable
 
 def reraise_if_terminate(e: BaseException) -> None:
     """weewxd stops by raising Terminate from its SIGTERM signal handler --
@@ -133,7 +176,18 @@ def get_concentrations(cfg: Configuration):
                                   cfg.archive_interval)
             if record is not None:
                 log.debug('get_concentrations: source: %s' % record)
+                # is_sane permits a null last_report_time, which is what
+                # dateTime is built from, so this can be None.  Nothing can
+                # be said about the age of a reading that will not say when
+                # it was taken; treat it as unusable rather than doing
+                # arithmetic on None.  get_concentrations runs on the MAIN
+                # thread at startup, where an escaping exception stops weewxd
+                # from starting at all.
                 reading_ts = to_int(record['dateTime'])
+                if reading_ts is None:
+                    log.info('Reading from %s:%d has no timestamp; ignoring it.'
+                             % (source.hostname, source.port))
+                    continue
                 age_of_reading = time.time() - reading_ts
                 if age_of_reading > cfg.archive_interval:
                     log.info('Reading from %s:%d is old: %d seconds.' % (
@@ -368,6 +422,196 @@ def populate_record(ts, j):
 
     return record
 
+@dataclass
+class ProxyAnswer:
+    """What came back from one airlink-proxy request.
+
+    `reachable` is the distinction the catch-up path turns on, and it is not
+    the same question as whether the request produced anything usable.  A
+    proxy that ANSWERED -- with an error envelope, with a body that is not
+    what was asked for, with an HTTP error -- is up, and holds the history;
+    it must not be taken out of service.  airlink-proxy answers 200 with an
+    error envelope when its own database is momentarily locked by the writer
+    (server.py:60-61), which is likeliest exactly during a catchup burst.
+    Only silence -- a refused connection, a timeout, a name that will not
+    resolve -- means down.
+
+    `value` is the usable result, or None if there wasn't one."""
+    reachable: bool
+    value    : Optional[Any] = None
+
+def ask_proxy(source: Source, command: str) -> ProxyAnswer:
+    """GET one airlink-proxy command.  A proxy's error is the AirLink's own
+    envelope -- a null data member and an error object -- so the check is the
+    one collect_data makes of the device.  (Before API version 2 the error
+    body was not valid json at all; r.json() rejects it, which lands in the
+    same place.)"""
+    url = 'http://%s:%s%s' % (source.hostname, source.port, command)
+    try:
+        log.debug('ask_proxy: fetching from url: %s, timeout: %d' % (url, source.timeout))
+        r = requests.get(url=url, timeout=source.timeout)
+    except Exception as e:
+        reraise_if_terminate(e)
+        log.info('ask_proxy: Attempt to fetch from: %s failed: %s.' % (url, e))
+        return ProxyAnswer(reachable=False)
+    # Something answered.  Whatever it said, the proxy is up.
+    try:
+        r.raise_for_status()
+        j = r.json()
+    except Exception as e:
+        reraise_if_terminate(e)
+        log.info('ask_proxy: %s answered unusably: %s.' % (url, e))
+        return ProxyAnswer(reachable=True)
+    if isinstance(j, dict) and j.get('error') is not None:
+        log.info('%s returned error: %s' % (url, j['error']))
+        return ProxyAnswer(reachable=True)
+    return ProxyAnswer(reachable=True, value=j)
+
+def record_from_proxy_reading(reading: Any) -> Optional[Dict[str, Any]]:
+    """One airlink-proxy reading -> a record, or None if it is not sane.
+
+    An airlink-proxy serves the AirLink's own shape, so this is the same
+    parsing the sensor path uses -- minus collect_data's freshness check,
+    which an archive record from a period WeeWX was down for is supposed to
+    fail.  The caller runs this inside its own try: a reading that is not
+    shaped like a reading at all raises rather than returning."""
+    if reading.get('data') is None:
+        return None
+    if reading['data']['conditions'][0]['data_structure_type'] == 5:
+        convert_data_structure_type_5_to_6(reading)
+    sane, msg = is_sane(reading)
+    if not sane:
+        log.warning('airlink-proxy record not sane, %s: %s' % (msg, reading))
+        return None
+    return populate_record(reading['data']['conditions'][0]['last_report_time'], reading)
+
+def fetch_proxy_archive_records(source: Source, since_ts: int,
+                                max_ts: int) -> ProxyAnswer:
+    """The proxy's archive records covering (since_ts, max_ts] -- since_ts is
+    exclusive and max_ts inclusive, which is the proxy's own convention.  The
+    answer's value is the sane records, possibly an empty list, or None if
+    the request produced nothing usable.
+
+    Note the query arguments are separated by a comma, not an ampersand."""
+    answer = ask_proxy(source, '/fetch-archive-records?since_ts=%d,max_ts=%d' % (
+        since_ts, max_ts))
+    j = answer.value
+    if j is None:
+        return answer
+    # Parsing stays inside a try: this runs on weewx's main thread, where
+    # anything that escapes takes weewxd down with it.  A [[ProxyN]] port
+    # pointed at some other service can return well-formed json that is
+    # nothing like a list of readings.
+    try:
+        if not isinstance(j, list):
+            log.info('fetch_proxy_archive_records: %s returned %r, expected a list of records.'
+                     % (source.hostname, j))
+            return ProxyAnswer(reachable=True)
+        records: List[Dict[str, Any]] = []
+        for reading in j:
+            # Per reading: one unparseable row must not lose the good ones,
+            # and must not be mistaken by the caller for an unreachable proxy
+            # -- which would suppress a proxy that answered.
+            try:
+                record = record_from_proxy_reading(reading)
+            except Exception as e:
+                reraise_if_terminate(e)
+                log.warning('airlink-proxy record from %s could not be read: %s: %s'
+                            % (source.hostname, e, reading))
+                continue
+            if record is not None:
+                records.append(record)
+    except Exception as e:
+        reraise_if_terminate(e)
+        log.info('fetch_proxy_archive_records: could not parse the answer from %s: %s.'
+                 % (source.hostname, e))
+        return ProxyAnswer(reachable=True)
+    return ProxyAnswer(reachable=True, value=records)
+
+def fetch_proxy_two_minute_record(source: Source) -> ProxyAnswer:
+    """The proxy's average over the last two minutes.  A proxy with no
+    reading yet answers with an error envelope ('No two-minute average
+    available.'), which ask_proxy has already turned into a value of None."""
+    answer = ask_proxy(source, '/fetch-two-minute-record')
+    j = answer.value
+    if j is None:
+        return answer
+    try:
+        if not isinstance(j, dict):
+            log.info('fetch_proxy_two_minute_record: %s returned %r, expected a reading.'
+                     % (source.hostname, j))
+            return ProxyAnswer(reachable=True)
+        return ProxyAnswer(reachable=True, value=record_from_proxy_reading(j))
+    except Exception as e:
+        reraise_if_terminate(e)
+        log.info('fetch_proxy_two_minute_record: could not parse the answer from %s: %s.'
+                 % (source.hostname, e))
+        return ProxyAnswer(reachable=True)
+
+def average_pm_values(records: List[Dict[str, Any]]) -> Dict[str, float]:
+    """Average the pm values of the proxy records covering one WeeWX archive
+    period -- what the accumulator would have arrived at from loop packets,
+    which carry these same fields.  A field is averaged over however many
+    records actually reported it; a field no record reported is absent."""
+    sums  : Dict[str, float] = {}
+    counts: Dict[str, int]   = {}
+    for record in records:
+        for obs in PM_OBS:
+            value = record.get(obs)
+            if value is not None:
+                sums[obs]   = sums.get(obs, 0.0) + value
+                counts[obs] = counts.get(obs, 0) + 1
+    return {obs: sums[obs] / counts[obs] for obs in sums}
+
+def proxy_supports_catchup(source: Source, archive_interval: int) -> ProxyAnswer:
+    """Whether this proxy may be used for catch-up.  The answer's value is
+    True or False when the proxy said enough to decide, and None when it did
+    not -- which is a different thing from the proxy being unreachable, so
+    the caller is told both.
+
+    Two things have to hold.  The proxy must speak the API command set
+    catch-up needs -- an older proxy files the single boundary poll rather
+    than an average, which is not what the period contained.  And its archive
+    interval must divide evenly into the one WeeWX archives on.  A SHORTER
+    interval is harmless: several of the proxy's records cover one WeeWX
+    period and are averaged together.  A longer one, or one that does not
+    divide, cannot answer for a WeeWX period at all -- the period can fall
+    entirely inside one of its records.  Rather than silently filling such a
+    period badly, or leaving a hole that looks like the sensor's fault,
+    catch-up is refused and says so."""
+    answer = ask_proxy(source, '/get-version')
+    j = answer.value
+    if j is None:
+        return ProxyAnswer(reachable=answer.reachable)
+    version = j.get('version') if isinstance(j, dict) else None
+    version_number: Optional[int] = None
+    if version is not None:
+        try:
+            # Through float: a command set that ever answers '2.1' or '3.0'
+            # must not be refused as older than 2, which int() alone would do
+            # by raising -- and the refusal is remembered for the life of the
+            # process, so it would not be reconsidered until a restart.
+            version_number = int(float(version))
+        except (TypeError, ValueError):
+            version_number = None
+    if version_number is None or version_number < REQUIRED_PROXY_API_VERSION:
+        log.info('airlink-proxy %s:%s speaks API version %r, but catch-up requires '
+                 'version %d or later.  No archive records will be filled in from it.'
+                 % (source.hostname, source.port, version, REQUIRED_PROXY_API_VERSION))
+        return ProxyAnswer(reachable=True, value=False)
+    answer = ask_proxy(source, '/get-archive-interval-secs')
+    j = answer.value
+    if j is None:
+        return ProxyAnswer(reachable=answer.reachable)
+    interval = to_int(j.get('archive-interval-secs')) if isinstance(j, dict) else None
+    if not interval or archive_interval % interval != 0:
+        log.info('airlink-proxy %s:%s archives every %r seconds, which does not divide '
+                 'into the %d seconds WeeWX archives on.  No archive records will be '
+                 'filled in from it.'
+                 % (source.hostname, source.port, interval, archive_interval))
+        return ProxyAnswer(reachable=True, value=False)
+    return ProxyAnswer(reachable=True, value=True)
+
 class AirLink(StdService):
     """Collect AirLink air quality measurements."""
 
@@ -386,13 +630,51 @@ class AirLink(StdService):
             poll_interval    = 5,
             sources          = AirLink.configure_sources(self.config_dict))
 
+        # The interval WeeWX actually archives on, decided the way the engine
+        # decides it (engine.py:544, 566-580): under SOFTWARE record
+        # generation weewx.conf's value is used and the console is ignored;
+        # under HARDWARE the console's is used -- differing from weewx.conf
+        # only earns a log message -- unless the driver cannot report one.
+        # This is what an airlink-proxy's archive interval has to match.  It
+        # is kept apart from cfg.archive_interval, which decides how long a
+        # reading stays fresh and must keep answering exactly as it always
+        # has.
+        archive_dict = config_dict.get('StdArchive', {})
+        configured_interval = to_int(archive_dict.get('archive_interval', 300))
+        if archive_dict.get('record_generation', 'hardware').lower() == 'hardware':
+            try:
+                self.archive_interval = to_int(engine.console.archive_interval)
+            except (AttributeError, NotImplementedError):
+                self.archive_interval = configured_interval
+            # A driver that answers None would otherwise stop weewx from
+            # starting, with a traceback pointing at this extension.
+            if not self.archive_interval:
+                self.archive_interval = configured_interval
+        else:
+            self.archive_interval = configured_interval
+        self.cfg.injection_retention_secs = 2 * self.archive_interval
+        # A proxy that could not be reached is not asked again until this
+        # time.  A startup catchup delivers its records back to back: without
+        # this, an unreachable proxy would cost its whole timeout PER RECORD.
+        # If it is down, it is down.
+        self.proxy_retry_after: Dict[str, float] = {}
+        # Whether each proxy may be used for catch-up at all, asked once and
+        # remembered.  Absent means not yet asked.
+        self.proxy_catchup_ok: Dict[str, bool] = {}
+        # Latch for the nothing-to-fill message: a catchup burst dispatches
+        # every record of an outage back to back, and a proxy that is refused
+        # outright has already said why once.  Same convention as the
+        # stale-reading log (Configuration.stale_logged).
+        self.no_data_logged = False
+
         source_count = 0
         for source in self.cfg.sources:
             if source.enable:
                 source_count += 1
                 log.info(
-                    'Source %d for AirLink readings: %s:%s, timeout: %d' % (
-                    source_count, source.hostname, source.port, source.timeout))
+                    'Source %d for AirLink readings: %s %s:%s, proxy: %s, timeout: %d' % (
+                    source_count, 'airlink-proxy' if source.is_proxy else 'sensor',
+                    source.hostname, source.port, source.is_proxy, source.timeout))
         if source_count == 0:
             log.error('No sources configured for airlink extension.  AirLink extension is inoperable.')
         else:
@@ -408,6 +690,14 @@ class AirLink(StdService):
             t.start()
 
             self.bind(weewx.NEW_LOOP_PACKET, self.new_loop_packet)
+
+            # Filling in an archive period WeeWX was down for means asking an
+            # airlink-proxy for its archive history.  An AirLink queried
+            # directly keeps none, so with no proxy configured there is
+            # nothing to ask and the handler is not bound at all -- no
+            # fetches, no log messages, nothing.
+            if any(source.enable and source.is_proxy for source in self.cfg.sources):
+                self.bind(weewx.NEW_ARCHIVE_RECORD, self.new_archive_record)
 
     def new_loop_packet(self, event):
         log.debug('new_loop_packet(%s)' % event)
@@ -467,6 +757,8 @@ class AirLink(StdService):
                     packet['pm2_5_nowcast_aqi_color'] = AQI.compute_pm2_5_aqi_color(packet['pm2_5_nowcast_aqi'])
                 if cfg.concentrations.pm_10_nowcast is not None:
                     packet['pm10_0_nowcast'] = cfg.concentrations.pm_10_nowcast
+
+                AirLink.record_injections(cfg, packet)
             else:
                 # Log at error level once per outage, not once per loop packet.
                 if not cfg.stale_logged:
@@ -475,13 +767,233 @@ class AirLink(StdService):
                 else:
                     log.debug('Found no fresh concentrations to insert.')
 
+    @staticmethod
+    def record_injections(cfg: Configuration, packet: Dict[str, Any]) -> None:
+        """Remember, per observation, that this extension put a value in a
+        loop packet -- this is what new_archive_record consults to tell a
+        period the accumulator has data for from one it has nothing for.
+        Called with cfg.lock already held."""
+        # `.get('dateTime')` defaults only cover an ABSENT key; a key
+        # present and null still yields None, and the subtraction below would
+        # then raise on the main thread, inside fill_in_packet, which
+        # new_loop_packet calls with no guard around it.
+        ts = to_float(packet.get('dateTime'))
+        if ts is None:
+            ts = time.time()
+        # Two archive intervals is plenty to answer for the period that just
+        # closed, and bounds the lists.
+        retention = cfg.injection_retention_secs
+        if not retention:
+            retention = 2 * cfg.archive_interval
+        cutoff = ts - retention
+        for obs in PM_OBS:
+            if obs in packet:
+                cfg.injections[obs].append(ts)
+            cfg.injections[obs] = [t for t in cfg.injections[obs] if t >= cutoff]
+
+    def injected_in(self, obs: str, start_ts: float, end_ts: float) -> bool:
+        """Did this extension put obs into a loop packet in
+        (start_ts, end_ts]?  If it did, the accumulator holds that period's
+        samples and nothing needs filling in."""
+        with self.cfg.lock:
+            return any(start_ts < ts <= end_ts for ts in self.cfg.injections[obs])
+
+    def new_archive_record(self, event):
+        """Fill in pm observations for an archive period this extension
+        contributed nothing to -- the periods WeeWX was down for, handed over
+        by the logger at startup catchup.  Bound only when a proxy source is
+        configured.
+
+        Runs on the main thread, in the data_services slot, so the record can
+        still be altered: StdArchive stores it (and, for hardware records,
+        grafts the accumulator's values onto the fields still missing) only
+        after every data service has seen it.  Whatever is set here therefore
+        survives -- which is also why a value is only ever set for a period
+        this extension put nothing into."""
+        record = event.record
+        # Same class of hazard as the interval below, and ahead of the same
+        # try: a record whose dateTime is null would raise where nothing
+        # catches it.  A record that cannot say which period it covers cannot
+        # be filled in.
+        end_ts = to_int(record.get('dateTime'))
+        if end_ts is None:
+            log.info('Archive record has no timestamp; not filling it in.')
+            return
+        # The record's own interval, not the configured archive interval: on
+        # a long catchup a logger's records need not fall on archive
+        # boundaries.
+        # `or 0`: a record read back with a NULL interval would otherwise
+        # raise here, outside the try below, and take weewxd down.  to_float,
+        # not to_int: under software record generation WeeWX sets interval by
+        # true division (engine.py:758), so a 90 second interval arrives as
+        # 1.5 and to_int would truncate it to a 60 second window.  round()
+        # keeps the result an int and absorbs float error -- to_float(100/60)
+        # * 60 is 99.999..., which should be 100.
+        interval_secs = round(to_float(record.get('interval') or 0) * 60)
+        if interval_secs <= 0:
+            interval_secs = self.archive_interval
+        start_ts = end_ts - interval_secs
+
+        # Test for None, not just for absence.  Under software record
+        # generation the accumulator has already had its say by the time this
+        # runs, and it writes None for a type it holds with no usable values.
+        needed = [obs for obs in PM_OBS if record.get(obs) is None
+                  and not self.injected_in(obs, start_ts, end_ts)]
+        if not needed:
+            return
+
+        # Main thread: an exception escaping here goes up through
+        # dispatchEvent and stops weewxd.  Nothing about filling in an old
+        # record is worth that.
+        try:
+            values = self.backfill_values(start_ts, end_ts)
+        except Exception as e:
+            reraise_if_terminate(e)
+            log.error('Could not fill %s in archive record %s: %s' % (
+                ', '.join(needed), timestamp_to_string(end_ts), e))
+            return
+        filled = [obs for obs in needed if obs in values]
+        for obs in filled:
+            record[obs] = values[obs]
+        if filled:
+            self.no_data_logged = False
+            log.info('Filled in %s in archive record %s.' % (
+                ', '.join(filled), timestamp_to_string(end_ts)))
+        elif not self.no_data_logged:
+            # Log once, not once per record of a catchup burst.
+            self.no_data_logged = True
+            log.info('No airlink-proxy data with which to fill %s in archive record %s.' % (
+                ', '.join(needed), timestamp_to_string(end_ts)))
+        else:
+            log.debug('No airlink-proxy data with which to fill %s in archive record %s.' % (
+                ', '.join(needed), timestamp_to_string(end_ts)))
+
+    def usable_proxies(self) -> List[Source]:
+        """The enabled proxies worth asking right now: reachable lately, and
+        answering for the API version and archive interval catch-up needs.
+        The question is asked once per proxy and remembered; a proxy that
+        could not be reached is left unanswered and asked again later."""
+        now = time.time()
+        usable: List[Source] = []
+        for source in self.cfg.sources:
+            if not source.enable or not source.is_proxy:
+                continue
+            key = '%s:%s' % (source.hostname, source.port)
+            if now < self.proxy_retry_after.get(key, 0.0):
+                continue
+            if key not in self.proxy_catchup_ok:
+                answer = proxy_supports_catchup(source, self.archive_interval)
+                if answer.value is None:
+                    # Undecided.  Suppress it only if nothing answered at all;
+                    # a proxy that answered badly is still up, and asking it
+                    # again costs nothing it has not already paid.
+                    if not answer.reachable:
+                        self.proxy_retry_after[key] = now + self.archive_interval
+                    continue
+                self.proxy_catchup_ok[key] = answer.value
+            if self.proxy_catchup_ok[key]:
+                usable.append(source)
+        return usable
+
+    def backfill_values(self, start_ts: int, end_ts: int) -> Dict[str, float]:
+        """The pm values for the period (start_ts, end_ts], from the first
+        proxy that holds archive records covering it.
+
+A proxy normally holds the period that just closed -- it writes the
+        record on its first poll at or past the boundary, ahead of WeeWX,
+        which archives at archive_delay.
+
+        The two fallbacks below are governed by one rule: a reading may fill a
+        period only if it OVERLAPS that period.  The proxy's two minute
+        average describes the two minutes ending at its freshest sample, so it
+        qualifies when that window intersects the period.  The reading in hand
+        is a single instantaneous sample -- a point, not a span -- so it
+        qualifies only when it was taken inside the period.  Neither is
+        allowed to stand in for a period it says nothing about, which is what
+        an unchecked sample taken after the period closed would be doing.
+
+        Any period nothing overlaps keeps its empty pm columns.  That is the
+        right answer, not a defeat."""
+        now = time.time()
+        # The proxies that answered.  One that did not is not asked a second
+        # time for its two minute average: it has already cost a timeout on
+        # weewx's main thread, and it is down.
+        reachable: List[Source] = []
+        for source in self.usable_proxies():
+            answer = fetch_proxy_archive_records(source, start_ts, end_ts)
+            if not answer.reachable:
+                # Nothing answered.  Leave it alone until the next archive
+                # period: every record in a catchup burst would otherwise wait
+                # out the same timeout.  A proxy that DID answer, however
+                # uselessly, is asked again for the next record -- a locked
+                # database is momentary, and suppressing on it would abandon
+                # the rest of the outage.
+                self.proxy_retry_after['%s:%s' % (source.hostname, source.port)] = \
+                    now + self.archive_interval
+                continue
+            reachable.append(source)
+            if answer.value:
+                # Records can be sane and still carry nothing usable -- a pm
+                # sensor fault leaves temp and hum reporting.  Keep looking.
+                values = average_pm_values(answer.value)
+                if values:
+                    return values
+        # A two minute average ends at the freshest sample it covers, so one
+        # taken now cannot reach a period that closed more than two minutes
+        # ago.  Cheap check, before asking anyone anything -- and it guards
+        # ONLY this loop.  The reading in hand below answers to a different
+        # rule (taken inside the period), and a period that closed an hour
+        # ago can still hold a sample that qualifies.
+        two_minute_reachable = \
+            reachable if time.time() - end_ts < TWO_MINUTE_AVERAGE_SECS else []
+        for source in two_minute_reachable:
+            record = fetch_proxy_two_minute_record(source).value
+            if record is None:
+                continue
+            # The window this average describes, and whether it overlaps the
+            # period.  This is also what keeps a FROZEN average out: a proxy
+            # goes on serving its last two minute average after the AirLink
+            # dies -- the row is replaced, never cleared -- and such a record
+            # is dated before the period, so it cannot overlap it.
+            reading_ts = record.get('dateTime')
+            if reading_ts is None or \
+                    reading_ts <= start_ts or \
+                    reading_ts - TWO_MINUTE_AVERAGE_SECS >= end_ts:
+                continue
+            values = average_pm_values([record])
+            if values:
+                return values
+        with self.cfg.lock:
+            concentrations = self.cfg.concentrations
+            # A spot reading has no duration, so overlapping the period means
+            # being taken inside it.  A sample from after the period closed
+            # describes a moment the period does not contain, however recent
+            # it is.
+            if concentrations is not None and concentrations.timestamp is not None \
+                    and start_ts < concentrations.timestamp <= end_ts:
+                return average_pm_values([{
+                    'pm1_0' : concentrations.pm_1_last,
+                    'pm2_5' : concentrations.pm_2p5_last,
+                    'pm10_0': concentrations.pm_10_last}])
+        return {}
+
     def configure_sources(config_dict):
         sources = []
+        # Configure Proxies
         idx = 0
         while True:
             idx += 1
             try:
-                source = Source(config_dict, 'Sensor%d' % idx)
+                source = Source(config_dict, 'Proxy%d' % idx, True)
+                sources.append(source)
+            except KeyError:
+                break
+        # Configure Sensors
+        idx = 0
+        while True:
+            idx += 1
+            try:
+                source = Source(config_dict, 'Sensor%d' % idx, False)
                 sources.append(source)
             except KeyError:
                 break
@@ -821,11 +1333,20 @@ if __name__ == "__main__":
                           help='test the data collector (requires a live AirLink sensor)')
         parser.add_option('--test-is-sane', dest='sane_test', action='store_true',
                           help='test the is_sane function (no sensor needed)')
+        parser.add_option('--test-catchup', dest='catchup', action='store_true',
+                          help='test the archive catch-up path (requires a running'
+                               ' airlink-proxy)')
         parser.add_option('--hostname', dest='hostname', action='store',
-                          help='hostname to use with --test-extension')
+                          help='hostname to use with --test-extension or --test-catchup')
         parser.add_option('--port', dest='port', action='store',
-                          type=int, default=80,
-                          help="port to use with --test-extension. Default is '80'")
+                          type=int, default=None,
+                          help="port to use.  Default is '80' with --test-extension"
+                               " and '8040' with --test-catchup")
+        parser.add_option('--archive-interval', dest='archive_interval',
+                          action='store', type=int, default=300,
+                          help='the interval WeeWX archives on, in seconds, used by'
+                               " --test-catchup to check the proxy against.  Default"
+                               " is '300'")
         (options, args) = parser.parse_args()
 
         weeutil.logger.setup('airlink', {})
@@ -833,12 +1354,17 @@ if __name__ == "__main__":
         if options.te:
             if not options.hostname:
                 parser.error('--test-extension requires --hostname argument')
-            test_extension(options.hostname, options.port)
+            test_extension(options.hostname, options.port or 80)
+        if options.catchup:
+            if not options.hostname:
+                parser.error('--test-catchup requires --hostname argument')
+            test_catchup(options.hostname, options.port or 8040,
+                         options.archive_interval)
         if options.sane_test:
             test_is_sane()
 
     def test_extension(hostname, port):
-        sources = [Source({'Sensor1': { 'enable': True, 'hostname': hostname, 'port': port, 'timeout': 2}}, 'Sensor1')]
+        sources = [Source({'Sensor1': { 'enable': True, 'hostname': hostname, 'port': port, 'timeout': 2}}, 'Sensor1', False)]
         cfg = Configuration(
             lock             = threading.Lock(),
             concentrations   = None,
@@ -854,6 +1380,72 @@ if __name__ == "__main__":
             AirLink.fill_in_packet(cfg, packet)
             print('Fields to be inserted into packet: %s' % packet)
             time.sleep(cfg.poll_interval)
+
+    def test_catchup(hostname, port, archive_interval):
+        """Ask an airlink-proxy everything the catch-up path asks it, and show
+        what would be filled into an archive record.  This is a diagnostic, so
+        the timeout is generous where the extension's own default is one
+        second: the question here is what the proxy says, not whether it says
+        it fast enough to be worth waiting for on weewx's main thread."""
+        source = Source({'Proxy1': {'enable': True, 'hostname': hostname,
+                                    'port': port, 'timeout': 5}}, 'Proxy1', True)
+        print('airlink-proxy %s:%d' % (source.hostname, source.port))
+        print('WeeWX archive interval assumed to be %d seconds'
+              ' (override with --archive-interval).' % archive_interval)
+        print()
+
+        print('What the proxy answers:')
+        for command in ['/get-version', '/get-archive-interval-secs',
+                        '/get-earliest-timestamp']:
+            print('    %-28s %r' % (command, ask_proxy(source, command).value))
+        print()
+
+        answer = proxy_supports_catchup(source, archive_interval)
+        if answer.value is None:
+            print('The proxy %s, so nothing else can be checked.  Catch-up'
+                  ' would leave the question open and ask again later.'
+                  % ('answered, but not with a version and interval it could'
+                     ' read' if answer.reachable else 'could not be reached'))
+            return
+        if not answer.value:
+            print('This proxy will NOT be used to fill in archive records.'
+                  '  The reason is logged above.')
+        else:
+            print('This proxy WILL be used to fill in archive records.')
+        print()
+
+        # The last archive period that closed -- the one catch-up would be
+        # asked about first.
+        end_ts = int(time.time() / archive_interval) * archive_interval
+        start_ts = end_ts - archive_interval
+        print('Last closed archive period, (%s, %s]:'
+              % (timestamp_to_string(start_ts), timestamp_to_string(end_ts)))
+        records = fetch_proxy_archive_records(source, start_ts, end_ts).value
+        if records is None:
+            print('    the proxy could not be asked')
+        elif not records:
+            print('    no archive records cover it, so this period would be'
+                  ' filled from the two minute average below, if it closed'
+                  ' within the last %d seconds -- and otherwise left empty'
+                  % TWO_MINUTE_AVERAGE_SECS)
+        else:
+            print('    %d archive record(s) -> %s'
+                  % (len(records), average_pm_values(records)))
+
+        # A wider span, to show how much history the proxy actually holds.
+        periods = 12
+        span_ts = end_ts - periods * archive_interval
+        records = fetch_proxy_archive_records(source, span_ts, end_ts).value
+        if records is not None:
+            print('Last %d periods (since %s): %d archive record(s).'
+                  % (periods, timestamp_to_string(span_ts), len(records)))
+        print()
+
+        record = fetch_proxy_two_minute_record(source).value
+        if record is None:
+            print('/fetch-two-minute-record: no reading yet.')
+        else:
+            print('/fetch-two-minute-record: %s' % average_pm_values([record]))
 
     def test_is_sane():
         # A type-6 response as captured from a real AirLink.

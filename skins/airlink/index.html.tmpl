@@ -4,10 +4,10 @@
 #errorCatcher Echo
 #encoding UTF-8
 <!DOCTYPE html>
-<html lang="en">
+<html lang="$lang">
   <head>
     <meta charset="UTF-8">
-    <title>weewx-airlink demo page</title>
+    <title>$gettext("weewx-airlink demo page")</title>
     <style>
       .airlinknav {
         overflow: hidden;
@@ -32,20 +32,18 @@
   </head>
   <body>
     <div style="text-align:center;font-size:32px;">
-      <div>WeeWX-AirLink Demo Page</div>
+      <div>$gettext("WeeWX-AirLink Demo Page")</div>
 #if $current.pm2_5_aqi.has_data
 ##
 ## pm2.5_aqi
-<!-- $rgb $current.pm2_5_aqi_color.raw -->
 #set $rgbint = int($current.pm2_5_aqi_color.raw)
 #set $red   = ($rgbint >> 16) & 255
 #set $green = ($rgbint >>  8) & 255
 #set $blue  =  $rgbint        & 255
 #set $rgbcolor = 'rgb(%d,%d,%d)' % ($red, $green, $blue)
-<!-- $rgbint $red $green $blue -->
       <div>$obs.label.pm2_5_aqi: <span style='color:$rgbcolor;'>$current.pm2_5_aqi</span></div>
 #else
-      <div>$obs.label.pm2_5_aqi: <span style='color:gray;'>Unavailable</span></div>
+      <div>$obs.label.pm2_5_aqi: <span style='color:gray;'>$gettext("Unavailable")</span></div>
 #end if
     </div>
     <br>
@@ -54,10 +52,10 @@
       <table style="text-align:center;width:40%;margin-left:30%;">
         <tr>
           <td style="background-color:black;text-align:center;">
-            <span id="day" onclick="clickDay()" style="width:25%;" class="active">Day</span>
-            <span id="week" onclick="clickWeek()" style="width:25%;">Week</span>
-            <span id="month" onclick="clickMonth()" style="width:25%;">Month</span>
-            <span id="year" onclick="clickYear()" style="width:25%;">Year</span>
+            <span id="day" onclick="clickDay()" style="width:25%;" class="active">$gettext("Day")</span>
+            <span id="week" onclick="clickWeek()" style="width:25%;">$gettext("Week")</span>
+            <span id="month" onclick="clickMonth()" style="width:25%;">$gettext("Month")</span>
+            <span id="year" onclick="clickYear()" style="width:25%;">$gettext("Year")</span>
           </td>
         </tr>
       </table>
@@ -67,32 +65,32 @@
     <div id="day_block" style="text-align:center;">
       <div style="display:inline-block;">
         <div>
-          <img src="dayaqi.png" $graph_width alt="$obs.label.pm2_5_aqi">
-          <img src="daypm2_5.png" $graph_width alt="$obs.label.pm2_5">
+          <img src="dayaqi.png" alt="$obs.label.pm2_5_aqi">
+          <img src="daypm2_5.png" alt="$obs.label.pm2_5">
         </div>
       </div>
     </div>
     <div id="week_block" style="display:none;text-align:center;">
       <div style="display:inline-block;">
         <div>
-          <img src="weekaqi.png" $graph_width alt="$obs.label.pm2_5_aqi">
-          <img src="weekpm2_5.png" $graph_width alt="$obs.label.pm2_5">
+          <img src="weekaqi.png" alt="$obs.label.pm2_5_aqi">
+          <img src="weekpm2_5.png" alt="$obs.label.pm2_5">
         </div>
       </div>
     </div>
     <div id="month_block" style="display:none;text-align:center;">
       <div style="display:inline-block;">
         <div>
-          <img src="monthaqi.png" $graph_width alt="$obs.label.pm2_5_aqi">
-          <img src="monthpm2_5.png" $graph_width alt="$obs.label.pm2_5">
+          <img src="monthaqi.png" alt="$obs.label.pm2_5_aqi">
+          <img src="monthpm2_5.png" alt="$obs.label.pm2_5">
         </div>
       </div>
     </div>
     <div id="year_block" style="display:none;text-align:center;">
       <div style="display:inline-block;">
         <div>
-          <img src="yearaqi.png" $graph_width alt="$obs.label.pm2_5_aqi">
-          <img src="yearpm2_5.png" $graph_width alt="$obs.label.pm2_5">
+          <img src="yearaqi.png" alt="$obs.label.pm2_5_aqi">
+          <img src="yearpm2_5.png" alt="$obs.label.pm2_5">
         </div>
       </div>
     </div>

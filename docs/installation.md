@@ -10,7 +10,7 @@ description: Requirements and step-by-step installation of the weewx-airlink ext
 ## Requirements
 
 * Python 3.7 or later
-* WeeWX 4 or 5
+* WeeWX 4.6 or later
 * The [wview_extended](https://github.com/weewx/weewx/blob/master/src/schemas/wview_extended.py)
   schema, which supplies the `pm1_0`, `pm2_5` and `pm10_0` columns
 * The `requests` Python package

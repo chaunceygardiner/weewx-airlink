@@ -79,11 +79,17 @@ asked and nothing is logged.  See
 A demo skin ships with the extension and is enabled by default; the page
 above is what it renders.
 
+The page is translatable, and German, French, Dutch and Spanish ship with
+it — see [Translating the demo page](i18n.md):
+
+![The demo page in German](https://raw.githubusercontent.com/chaunceygardiner/weewx-airlink/master/AirLinkReport-de.png)
+
 ## Where to go next
 
 * [Installation](installation.md) — requirements and the install steps.
 * [Configuration](configuration.md) — sensors, proxies and gap filling.
 * [Fields in reports](fields.md) — every field, and how to use it in a template.
+* [Translating the demo page](i18n.md) — lang files, and the four that ship.
 * [Troubleshooting](troubleshooting.md) — log messages and the offline harnesses.
 
 ## Licensing

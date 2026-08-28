@@ -1,6 +1,54 @@
 weewx-airlink change history
 ----------------------------
 
+4.0 08/28/2026
+--------------
+- ACTION REQUIRED for installations running WeeWX older than 4.6: upgrade
+  WeeWX first.  This release requires WeeWX 4.6 or later, up from WeeWX 4.
+  4.6 (February 2022) is the release that introduced lang and $gettext,
+  which the demo page now uses unconditionally; on an older WeeWX Cheetah
+  echoes those placeholders into the page verbatim, so it renders its own
+  source text rather than falling back to English.  Refusing to install is
+  the honest answer.  Both the installer and the extension check, and the
+  check compares version numbers as integers -- WeeWX 4.10 is NEWER than
+  4.6, though it sorts before it as text.
+- The demo page is now translatable, entirely through WeeWX's own
+  mechanisms.  Every string the page renders is either a gettext-style
+  [Texts] key (the English string IS the key, and a report falls back
+  to English one string at a time, so a partial translation is fine),
+  or an observation label ([Labels] [[Generic]]), both supplied by
+  lang/<lang>.conf.  (The " AQI" and " RGB" unit labels are not
+  translatable per report: this extension registers them in WeeWX's
+  process-global unit label dictionary, which wins over any skin or
+  lang setting.  Both are acronyms in every language anyway.)  The
+  skin ships lang/en.conf, the reference dictionary:
+  a test now fails if a rendered string is missing from it, or if it
+  carries a string nothing renders.  Set the language per report with
+  lang = <code> in weewx.conf ([StdReport] [[AirLinkReport]]).
+- German, French, Dutch and Spanish ship with the skin: lang/de.conf,
+  fr.conf, nl.conf and es.conf are complete translations of the
+  dictionary (a test keeps each complete, so new strings cannot ship
+  untranslated; another pins the plot-period tabs to the translations
+  of WeeWX's own Seasons skin).  Corrections are welcome -- file an
+  issue -- as are further languages; a lang file is a self-contained,
+  no-code contribution.
+- The plots are now drawn with the skin's own OpenSans fonts (the same
+  fonts WeeWX's Seasons skin ships): the built-in bitmap font cannot
+  draw the accented characters of the translated plot labels.
+- The pm2_5 label (the concentration plots' title) is now the standard
+  short form PM2.5 -- PM2,5 in the translations, per European agency
+  usage -- replacing "Concentration of Particles < 2.5 Micrometers".
+- The demo page's <img> tags no longer carry a stray $graph_width.  The
+  skin defines no such variable, so with #errorCatcher Echo the name was
+  rendered into the page verbatim, as an attribute no browser knows and
+  the W3C validator rejects (eight errors on every rendering of the
+  page).  Nothing about the page's appearance changes.
+- The demo page screenshot in the README and the manual has been recaptured.
+  It dated from 2020 and showed the old plot title in WeeWX's built-in bitmap
+  font -- the two things this release changes.
+- The user manual now covers translating the demo page:
+  https://chaunceygardiner.github.io/weewx-airlink/i18n.html
+
 3.0 08/27/2026
 --------------
 - Archive records for periods WeeWX was down for are now filled in from an

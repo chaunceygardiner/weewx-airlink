@@ -1,22 +1,45 @@
-# weewx-airlink
-
-A WeeWX extension that reads a [Davis AirLink](https://www.davisinstruments.com/airlink/)
-air quality sensor on the local network (or an
-[airlink-proxy](https://github.com/chaunceygardiner/airlink-proxy) service) and
-inserts particulate concentrations into every WeeWX loop packet.
+# weewx-airlink — See what you breathe
+Open source plugin for WeeWX software.
 
 Copyright (C) 2020-2026 by John A Kline (john@johnkline.com)
 
-[User manual](https://chaunceygardiner.github.io/weewx-airlink/) &middot;
-[GitHub project](https://github.com/chaunceygardiner/weewx-airlink)
+[![Read the manual](assets/btn-manual.svg)](https://chaunceygardiner.github.io/weewx-airlink/)
+[![Download weewx-airlink.zip](assets/btn-download.svg)](https://github.com/chaunceygardiner/weewx-airlink/releases/latest/download/weewx-airlink.zip)
+[![Report an issue](assets/btn-issue.svg)](https://github.com/chaunceygardiner/weewx-airlink/issues)
+
+## What it is
+
+weewx-airlink puts the air over your own station on your WeeWX site: how much
+smoke and dust is in it **right now**, and what the EPA would call it.
+
+PM1.0, PM2.5 and PM10 land in every loop packet and every archive record, so
+air quality graphs sit alongside temperature and rain, and the current AQI —
+with its official EPA color — is available anywhere in your reports and
+templates.  The AirLink's own one-minute and NowCast averages come through as
+well, so a live page can show a figure that moves with the air instead of one
+that lags a whole archive period behind it.  When the smoke rolls in, you are
+reading your own backyard, not a regional monitor miles upwind.
+
+**Downtime leaves no hole.**  A restart, a reboot, a power cut: weewx-airlink
+goes back and fills the pm data into the records WeeWX missed (this needs the
+author's [airlink-proxy](https://chaunceygardiner.github.io/airlink-proxy/)),
+so nothing is left blank in the columns or in the graphs that draw them.  The
+catch-up records your logger hands over when WeeWX returns carry no air
+quality data of their own — nothing was running to supply any.  See
+[Filling in archive records after downtime](#filling-in-archive-records-after-downtime).
+
+![The demo page](AirLinkReport.jpg)
 
 **Requires:**
-* WeeWX 4 or 5
+* WeeWX 4.6 or later
 * Python 3.7 or greater
 * The [wview_extended](https://github.com/weewx/weewx/blob/master/src/schemas/wview_extended.py)
   schema (it contains the `pm1_0`, `pm2_5` and `pm10_0` columns)
 * The `requests` Python package
 * A Davis AirLink sensor reachable on your local network
+* Recommended: an [airlink-proxy](https://chaunceygardiner.github.io/airlink-proxy/)
+  polling that sensor.  Filling in archive records after downtime requires
+  one; everything else works without it.
 
 Not sure about the schema?  wview_extended is the default for new WeeWX 4
 and 5 installs; only databases created under WeeWX 3 and carried forward
@@ -37,7 +60,7 @@ history graphs on their own):
 |-----------|-----------------------------------------------------|
 | `pm1_0`   | PM1.0 concentration (µg/m³)                         |
 | `pm2_5`   | PM2.5 concentration (µg/m³)                         |
-| `pm10_0`  | PM10.0 concentration (µg/m³)                        |
+| `pm10_0`  | PM10 concentration (µg/m³)                          |
 
 Loop packets also carry the smoother variants the AirLink computes —
 useful for real-time displays (e.g., with
@@ -48,13 +71,13 @@ though they are not stored in the database:
 |----------------------------|----------------------------------------------|
 | `pm1_0_1m`                 | PM1.0, 1-minute average                      |
 | `pm2_5_1m`                 | PM2.5, 1-minute average                      |
-| `pm10_0_1m`                | PM10.0, 1-minute average                     |
+| `pm10_0_1m`                | PM10, 1-minute average                       |
 | `pm2_5_1m_aqi`             | AQI computed from `pm2_5_1m`                 |
 | `pm2_5_1m_aqi_color`       | RGB color of that AQI's category             |
 | `pm2_5_nowcast`            | PM2.5 [NowCast](https://en.wikipedia.org/wiki/NowCast_(air_quality_index)) average |
 | `pm2_5_nowcast_aqi`        | AQI computed from `pm2_5_nowcast`            |
 | `pm2_5_nowcast_aqi_color`  | RGB color of that AQI's category             |
-| `pm10_0_nowcast`           | PM10.0 NowCast average                       |
+| `pm10_0_nowcast`           | PM10 NowCast average                         |
 
 Finally, two observation types are available everywhere in reports and
 graphs — without being stored in the database — via WeeWX
@@ -94,9 +117,34 @@ The category and color remain Hazardous/Maroon.
 
 ### Demo skin
 
-A small demo report is installed at `<HTML_ROOT>/airlink`:
+A small demo report is installed at `<HTML_ROOT>/airlink` — the page shown at
+the top of this README.  It is translatable and ships German, French, Dutch
+and Spanish (see [Translations](#translations)).
 
-![AirLinkReport](AirLinkReport.jpg)
+### Translations
+
+The demo report is translatable through WeeWX's own mechanisms — lang files
+and gettext-style `[Texts]` keys (the English string is the key; a missing
+entry falls back to English one string at a time).  German, French, Dutch and
+Spanish ship (`skins/airlink/lang/de.conf`, `fr.conf`, `nl.conf`, `es.conf`;
+corrections welcome — [file an
+issue](https://github.com/chaunceygardiner/weewx-airlink/issues)); select one
+per report in `weewx.conf`:
+
+```
+[StdReport]
+    [[AirLinkReport]]
+        lang = de                # or fr, nl, or es
+```
+
+![AirLinkReport in German](AirLinkReport-de.png)
+
+`[StdReport] [[Defaults]] lang = de` instead switches every skin that ships
+German at once; a skin lacking the language is silently ignored and stays
+English -- WeeWX notes it only at `debug = 1`.
+To add a language, copy
+`skins/airlink/lang/en.conf` — the reference dictionary, kept exact by a
+test — and translate the values.
 
 ### What's airlink-proxy?
 

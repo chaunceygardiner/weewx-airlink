@@ -22,7 +22,10 @@ import configobj
 import weewx
 
 
-from setup import ExtensionInstaller
+# weecfg.extension has been ExtensionInstaller's home since 2015 (WeeWX 3).
+# WeeWX still aliases it as 'setup' for older installers, but that is a
+# compatibility shim, not the canonical name.
+from weecfg.extension import ExtensionInstaller
 
 # Written as weewx.conf text rather than a dict so that the stanza weectl
 # merges into a fresh weewx.conf arrives with its comments: ConfigObj keeps
@@ -84,21 +87,51 @@ CONFIG = """
         timeout = 2
 """
 
+def weewx_version_at_least(minimum):
+    """Is the running WeeWX at least `minimum` (e.g. (4, 6))?
+
+    Compared as integers, not as text: WeeWX 4.10 sorts BELOW "4.6" as a
+    string, so a plain comparison would reject the whole 4.10 series.
+    weeutil's own version_compare cannot be used here -- it arrived after
+    4.6, so it is missing from some of the versions this has to reject.
+    """
+    running = []
+    for chunk in weewx.__version__.split('.')[:len(minimum)]:
+        digits = ''
+        for char in chunk:
+            if not char.isdigit():
+                break
+            digits += char
+        if not digits:
+            # A chunk we cannot parse.  If what we DID parse already settles
+            # it -- "3.x" is below (4, 6) whatever the x -- say so.
+            if tuple(running) < minimum[:len(running)]:
+                return False
+            # Otherwise accept: the cost of wrongly allowing an old WeeWX is
+            # a demo page that renders its own $gettext placeholders, while
+            # the cost of wrongly refusing a good one is weewxd dying at
+            # import.
+            return True
+        running.append(int(digits))
+    return tuple(running) >= minimum
+
+
 airlink_dict = configobj.ConfigObj(StringIO(CONFIG))
 
 def loader():
     if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 7):
         sys.exit("weewx-airlink requires Python 3.7 or later, found %s.%s" % (sys.version_info[0], sys.version_info[1]))
 
-    if weewx.__version__ < "4":
-        sys.exit("weewx-airlink requires WeeWX 4, found %s" % weewx.__version__)
+    # 4.6 is where WeeWX gained $lang and $gettext, which the demo skin uses.
+    if not weewx_version_at_least((4, 6)):
+        sys.exit("weewx-airlink requires WeeWX 4.6 or later, found %s" % weewx.__version__)
 
     return AirLinkInstaller()
 
 class AirLinkInstaller(ExtensionInstaller):
     def __init__(self):
         super(AirLinkInstaller, self).__init__(
-            version="3.0",
+            version="4.0",
             name='airlink',
             description='Record air quality as provided by a Davis AirLink sensor.',
             author="John A Kline",
@@ -110,6 +143,18 @@ class AirLinkInstaller(ExtensionInstaller):
                 ('skins/airlink', [
                     'skins/airlink/index.html.tmpl',
                     'skins/airlink/skin.conf',
+                ]),
+                ('skins/airlink/font', [
+                    'skins/airlink/font/OpenSans-Regular.ttf',
+                    'skins/airlink/font/OpenSans-Bold.ttf',
+                    'skins/airlink/font/license.txt',
+                ]),
+                ('skins/airlink/lang', [
+                    'skins/airlink/lang/en.conf',
+                    'skins/airlink/lang/de.conf',
+                    'skins/airlink/lang/fr.conf',
+                    'skins/airlink/lang/nl.conf',
+                    'skins/airlink/lang/es.conf',
                 ]),
             ]
         )

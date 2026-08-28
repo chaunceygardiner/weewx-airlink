@@ -45,15 +45,47 @@ from weewx.engine import StdService
 
 log = logging.getLogger(__name__)
 
-WEEWX_AIRLINK_VERSION = "3.0"
+WEEWX_AIRLINK_VERSION = "4.0"
 
 if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 7):
     raise weewx.UnsupportedFeature(
         "weewx-airlink requires Python 3.7 or later, found %s.%s" % (sys.version_info[0], sys.version_info[1]))
 
-if weewx.__version__ < "4":
+def weewx_version_at_least(minimum: Tuple[int, ...]) -> bool:
+    """Is the running WeeWX at least `minimum` (e.g. (4, 6))?
+
+    Compared as integers, not as text: WeeWX 4.10 sorts BELOW "4.6" as a
+    string, so a plain comparison would reject the whole 4.10 series.
+    weeutil's own version_compare cannot be used here -- it arrived after
+    4.6, so it is missing from some of the versions this has to reject.
+    """
+    running: List[int] = []
+    for chunk in weewx.__version__.split('.')[:len(minimum)]:
+        digits = ''
+        for char in chunk:
+            if not char.isdigit():
+                break
+            digits += char
+        if not digits:
+            # A chunk we cannot parse.  If what we DID parse already settles
+            # it -- "3.x" is below (4, 6) whatever the x -- say so.
+            if tuple(running) < minimum[:len(running)]:
+                return False
+            # Otherwise accept: the cost of wrongly allowing an old WeeWX is
+            # a demo page that renders its own $gettext placeholders, while
+            # the cost of wrongly refusing a good one is weewxd dying at
+            # import.
+            return True
+        running.append(int(digits))
+    return tuple(running) >= minimum
+
+
+# 4.6 is where WeeWX gained $lang and $gettext.  The demo skin uses both
+# unconditionally, and Cheetah's errorCatcher echoes an unknown placeholder
+# verbatim, so on an older WeeWX the page renders its own source text.
+if not weewx_version_at_least((4, 6)):
     raise weewx.UnsupportedFeature(
-        "weewx-airlink requires WeeWX 4, found %s" % weewx.__version__)
+        "weewx-airlink requires WeeWX 4.6 or later, found %s" % weewx.__version__)
 
 # Set up observation types not in weewx.units
 

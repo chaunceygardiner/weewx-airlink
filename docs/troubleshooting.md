@@ -1,7 +1,7 @@
 ---
 title: Troubleshooting
 layout: default
-nav_order: 5
+nav_order: 6
 description: What weewx-airlink's log messages mean, and the harnesses for diagnosing a sensor or a proxy.
 ---
 

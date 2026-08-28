@@ -1,0 +1,49 @@
+# GitHub Pages configuration for https://chaunceygardiner.github.io/weewx-airlink/
+title: weewx-airlink
+description: >-
+  Davis AirLink air quality for WeeWX -- particulate concentrations in every
+  loop packet, AQI and its color computed on demand as XTypes, and the
+  archive periods WeeWX was down for filled in from an airlink-proxy's own
+  archive history.
+url: "https://chaunceygardiner.github.io"
+baseurl: "/weewx-airlink"
+
+# Pinned to the same version the other manuals render from, so they cannot
+# drift apart when upstream releases.
+remote_theme: just-the-docs/just-the-docs@v0.12.0
+plugins:
+  - jekyll-remote-theme
+  - jekyll-sitemap
+  # Turns the .md links between pages into real URLs.  GitHub Pages enables
+  # this by default; naming it here keeps a local jekyll build identical.
+  - jekyll-relative-links
+
+search_enabled: true
+heading_anchors: true
+
+aux_links:
+  "weewx-airlink on GitHub":
+    - "https://github.com/chaunceygardiner/weewx-airlink"
+aux_links_new_tab: true
+
+# External links shown at the bottom of the left sidebar nav, on every page.
+nav_external_links:
+  - title: weewx-airlink on GitHub
+    url: https://github.com/chaunceygardiner/weewx-airlink
+  - title: Download weewx-airlink.zip
+    url: https://github.com/chaunceygardiner/weewx-airlink/releases/latest/download/weewx-airlink.zip
+
+callouts:
+  note:
+    title: Note
+    color: blue
+  important:
+    title: Important
+    color: red
+  tip:
+    title: Tip
+    color: green
+
+footer_content: >-
+  weewx-airlink is Copyright &copy; 2020&ndash;2026 John A Kline and is
+  licensed under the GNU Public License v3.

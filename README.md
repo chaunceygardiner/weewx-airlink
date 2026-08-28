@@ -7,6 +7,9 @@ inserts particulate concentrations into every WeeWX loop packet.
 
 Copyright (C) 2020-2026 by John A Kline (john@johnkline.com)
 
+[User manual](https://chaunceygardiner.github.io/weewx-airlink/) &middot;
+[GitHub project](https://github.com/chaunceygardiner/weewx-airlink)
+
 **Requires:**
 * WeeWX 4 or 5
 * Python 3.7 or greater

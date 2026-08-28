@@ -12,12 +12,32 @@ weewx-airlink change history
   written for an archive period this extension put nothing into, and a period
   no proxy holds a record for keeps its empty columns.  With no proxy
   configured nothing is asked and nothing is logged.
+- A reading may fill an archive period only if it OVERLAPS that period.  When
+  no archive record covers the period, the proxy's two minute average is used
+  if its window reaches into the period, and failing that the reading already
+  in hand if it was taken inside the period.  A sample taken after the period
+  closed describes a moment the period does not contain, however recent it is,
+  and is not used.  This is also what keeps a proxy's last two minute average
+  out once the AirLink stops answering: the proxy goes on serving it, but it
+  no longer reaches the periods being filled.
+- The API version and archive interval of each proxy are asked once and
+  remembered for as long as WeeWX runs.  After upgrading an airlink-proxy
+  from API version 1 to 2, or changing its archive-interval-secs, restart
+  WeeWX -- until then the extension acts on the answer it got at startup.
+- 'No airlink-proxy data with which to fill ...' is now logged once per
+  outage rather than once per archive record; a catchup burst no longer
+  emits one line per record.  It is logged again after the next successful
+  fill.
 - An airlink-proxy is now configured with its own [[ProxyN]] sections,
   separate from the [[SensorN]] sections used for AirLink sensors, matching
   weewx-purple.  A proxy defaults to port 8040 and a one second timeout; a
   sensor keeps port 80 and a ten second timeout.  Proxies are polled ahead
   of sensors.  Nothing needs to change on upgrade: an airlink-proxy already
   configured as a [[SensorN]] with port 8000 keeps working exactly as before.
+  Note that timeout governs every request to a source -- the five second
+  polling that feeds loop packets as well as archive filling -- so moving a
+  [[SensorN]] to a [[ProxyN]] and taking the default shortens the polling
+  timeout too.
 - New --test-catchup harness: asks an airlink-proxy the same questions the
   catch-up path asks it and prints what would be filled into an archive
   record, so a proxy that is not filling records can be diagnosed without
@@ -26,6 +46,9 @@ weewx-airlink change history
   commented, so each option comes with a line saying what it does and which
   values are placeholders to replace.  Existing installs are unaffected --
   weectl only ever fills in absent keys.
+- New user manual at https://chaunceygardiner.github.io/weewx-airlink/,
+  covering installation, configuration, every field the extension provides,
+  how AQI is computed, and troubleshooting.
 - Insane readings are now logged as warnings (were logged as info).
 - Clean mypy pass.
 

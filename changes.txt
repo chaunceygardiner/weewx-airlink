@@ -1,8 +1,8 @@
 weewx-airlink change history
 ----------------------------
 
-3.0 (in development)
---------------------
+3.0 08/27/2026
+--------------
 - Archive records for periods WeeWX was down for are now filled in from an
   airlink-proxy's archive history, so a restart no longer leaves a permanent
   hole in pm1_0/pm2_5/pm10_0.  Requires a [[ProxyN]] source running

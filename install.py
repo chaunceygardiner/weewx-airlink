@@ -30,6 +30,14 @@ from weecfg.extension import ExtensionInstaller
 # Written as weewx.conf text rather than a dict so that the stanza weectl
 # merges into a fresh weewx.conf arrives with its comments: ConfigObj keeps
 # them, a dict has nowhere to put them.
+#
+# ORDER MATTERS: ConfigObj attaches a comment block to the NEXT key, so a
+# commented-out option must be followed by a live key IN THE SAME SECTION.
+# Last in its section, it attaches to whatever section comes next and is
+# re-indented to the parent's level, landing outside the block it documents;
+# last in the WHOLE stanza it becomes this ConfigObj's final_comment, which
+# conditional_merge never transfers, so it vanishes from weewx.conf without
+# a word.  Hence hostname last in every source section.
 CONFIG = """
 [StdReport]
     [[AirLinkReport]]
@@ -48,43 +56,54 @@ CONFIG = """
     # low numbers to high.  The first one that yields a sane, fresh reading
     # wins and no further sources are tried.  The numbering of each kind
     # must start at 1 and be consecutive; a gap ends the scan.
+    #
+    # An option shown commented out is one the extension supplies itself.
+    # Leave it commented and the extension's own value governs, including
+    # a better one a later release might bring.  Uncomment it to pin this
+    # station to the value written here.
 
     # Proxies are instances of airlink-proxy.  Only a proxy keeps a history
     # of readings, so only a proxy can fill in the archive records for
     # periods WeeWX was not running.
     [[Proxy1]]
         enable = False
-        # Replace with the host name or IP address of the first proxy
-        hostname = proxy1
-        # Port is usually 8040 (purple-proxy uses 8000 and
+        # The port airlink-proxy listens on (purple-proxy uses 8000 and
         # airgradient-proxy 8080; airlink-proxy before 1.0 used 8000)
-        port = 8040
+        #port = 8040
         # http timeout (seconds).  A proxy answers out of its own database
         # on the local network; if it has not answered in a second, it is
         # down.
-        timeout = 1
+        #timeout = 1
+        # PLACEHOLDER -- replace with the host name or IP address of the
+        # machine running the first airlink-proxy
+        hostname = proxy1
     [[Proxy2]]
         enable = False
-        # Replace with the host name or IP address of the second proxy
+        #port = 8040
+        #timeout = 1
+        # PLACEHOLDER -- replace with the host name or IP address of the
+        # machine running the second airlink-proxy
         hostname = proxy2
-        port = 8040
-        timeout = 1
 
-    # Sensors are AirLink devices, queried directly.
+    # Sensors are AirLink devices, queried directly.  Sensor1 is enabled
+    # here so that a fresh install works with no proxy.
     [[Sensor1]]
         enable = True
-        # Replace with the host name or IP address of the first sensor
+        # The port the sensor's own web server listens on
+        #port = 80
+        # http timeout (seconds).  The AirLink's own processor is slower
+        # than a proxy's, so it gets more room.
+        #timeout = 2
+        # PLACEHOLDER -- replace with the host name or IP address of the
+        # first sensor
         hostname = airlink
-        # Port is usually 80
-        port = 80
-        # http timeout (seconds)
-        timeout = 2
     [[Sensor2]]
         enable = False
-        # Replace with the host name or IP address of the second sensor
+        #port = 80
+        #timeout = 2
+        # PLACEHOLDER -- replace with the host name or IP address of the
+        # second sensor
         hostname = airlink2
-        port = 80
-        timeout = 2
 """
 
 def weewx_version_at_least(minimum):

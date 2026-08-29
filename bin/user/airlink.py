@@ -147,8 +147,13 @@ class Source:
             self.timeout  = to_int(source_dict.get('timeout', 1))
         else:
             self.port = to_int(source_dict.get('port', 80))
-            # The AirLink's own processor is slow and easily overwhelmed.
-            self.timeout  = to_int(source_dict.get('timeout', 10))
+            # Longer than a proxy's, since the AirLink's own processor is
+            # slower than a proxy answering out of a database.  Two seconds
+            # is what install.py has written into every fresh weewx.conf
+            # since 2020, so it is what installs have actually been running;
+            # the fallback moved here to match when install.py stopped
+            # writing the option live.
+            self.timeout  = to_int(source_dict.get('timeout', 2))
 
 @dataclass
 class Concentrations:

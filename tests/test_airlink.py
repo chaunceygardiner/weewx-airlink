@@ -8,13 +8,14 @@ against an in-memory SQLite database."""
 import copy
 import datetime
 import importlib
-import importlib.util
+import io
 import logging
 import os
 import re
 import sqlite3
 import threading
 import time
+import types
 import unittest
 
 from typing import Any, Dict
@@ -22,6 +23,7 @@ from unittest import mock
 
 import configobj
 
+import weeutil.config
 import weeutil.logger
 import weeutil.weeutil
 import weewx
@@ -580,10 +582,12 @@ class TestConfigureSources(unittest.TestCase):
         self.assertEqual([s.hostname for s in sources], ['s1'])
 
     def test_defaults(self):
+        # Two seconds, the value install.py has shown for a sensor since
+        # 2020; TestInstallerConfig pins the two together.
         s = Source({'Sensor1': {'hostname': 'h'}}, 'Sensor1', False)
         self.assertFalse(s.is_proxy)
         self.assertEqual(s.port, 80)
-        self.assertEqual(s.timeout, 10)
+        self.assertEqual(s.timeout, 2)
         # enable defaults to False, and parses strings.
         self.assertFalse(s.enable)
         s = Source({'Sensor1': {'hostname': 'h', 'enable': 'true'}}, 'Sensor1', False)
@@ -1929,6 +1933,30 @@ class TestUsableProxies(AirLinkServiceTestCase):
             self.assertEqual(a.usable_proxies(), [])
         ask.assert_not_called()
 
+def load_install_module(name):
+    """install.py, loaded as a module.
+
+    Compiled straight from the source text rather than loaded through
+    importlib's file loader: that loader caches bytecode under
+    __pycache__ and reuses it whenever the file's SIZE and its mtime
+    SECOND both match, so two same-length edits inside one second leave
+    these guards reading the PREVIOUS install.py.  That is not
+    hypothetical -- it happened while proving the guards below fail when
+    sabotaged, and it made a sabotaged stanza test green.
+
+    Importing weecfg.extension first mirrors what weectl does before it
+    loads an installer; install.py imports ExtensionInstaller from there,
+    its home since 2015."""
+    importlib.import_module('weecfg.extension')
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        'install.py')
+    with open(path, encoding='utf-8') as f:
+        source = f.read()
+    module = types.ModuleType(name)
+    module.__file__ = path
+    exec(compile(source, path, 'exec'), module.__dict__)
+    return module
+
 class TestInstallerConfig(unittest.TestCase):
     """install.py's [StdReport] and [AirLink] defaults.  These are only ever
     read on a fresh `weectl extension install`, so a wrong value ships
@@ -1938,17 +1966,16 @@ class TestInstallerConfig(unittest.TestCase):
     REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     @classmethod
+    def install_module(cls):
+        """install.py, loaded rather than scraped: the stanza is built by
+        running the file, since the CONFIG text is parsed by ConfigObj at
+        import."""
+        return load_install_module('airlink_install')
+
+    @classmethod
     def installer_config(cls):
-        """install.py's config stanza, whichever form it is written in.
-        install.py imports ExtensionInstaller from weecfg.extension, its home
-        since 2015; importing that module here mirrors what weectl does before
-        it loads an installer."""
-        importlib.import_module('weecfg.extension')
-        spec = importlib.util.spec_from_file_location(
-            'airlink_install', os.path.join(cls.REPO_DIR, 'install.py'))
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module.AirLinkInstaller()['config']
+        """install.py's config stanza, whichever form it is written in."""
+        return cls.install_module().AirLinkInstaller()['config']
 
     def test_html_root_is_a_bare_subdirectory(self):
         """HTML_ROOT must NOT carry a public_html prefix.  weecfg prepends the
@@ -1966,29 +1993,138 @@ class TestInstallerConfig(unittest.TestCase):
         report = self.installer_config()['StdReport']['AirLinkReport']
         self.assertTrue(weeutil.weeutil.to_bool(report['enable']))
 
-    def test_source_defaults(self):
-        """One sensor enabled, both proxies and the second sensor off.  Values
-        are compared through to_bool/to_int because a ConfigObj stanza yields
-        strings where a plain dict yields bools and ints -- the installed
-        weewx.conf is text either way, and airlink.py coerces on read."""
+    SOURCE_SECTIONS = ['Proxy1', 'Proxy2', 'Sensor1', 'Sensor2']
+
+    # A commented-out assignment: '#timeout = 1', never a prose comment,
+    # which always has a space after the '#'.
+    COMMENTED_OPTION_RE = re.compile(r'^(\s*)#(\w+)\s*=\s*(.+?)\s*$')
+    SECTION_RE = re.compile(r'^\s*(\[+)([^\]]+)\]+\s*$')
+
+    @classmethod
+    def commented_options(cls):
+        """install.py's commented-out assignments, as {section: {option:
+        value}} -- the source section's own name for each.  Read out of
+        CONFIG as text because a commented-out option is by definition
+        absent from the parsed object."""
+        found = {}
+        section = None
+        for line in cls.install_module().CONFIG.splitlines():
+            header = cls.SECTION_RE.match(line)
+            if header:
+                section = header.group(2).strip()
+                continue
+            option = cls.COMMENTED_OPTION_RE.match(line)
+            if option:
+                found.setdefault(section, {})[option.group(2)] = option.group(3)
+        return found
+
+    def test_live_options_are_the_ones_with_no_default(self):
+        """What stays live is what the code cannot supply for itself: the
+        source on/off switches and the hostname placeholders the user has to
+        replace.  Everything with a real fallback is commented out, so it is
+        absent from the parsed stanza -- which is what lets the code's own
+        default govern.
+
+        The live keys are pinned as a COMPLETE SET, not by checking that
+        today's commented-out options are absent.  A named-absence check only
+        guards the options that already exist: a release that adds a new one
+        live -- `retries = 3` in the stanza against a `get('retries', 5)` in
+        the code -- would be the very drift this scheme exists to prevent,
+        and would sail past a test that only looks for port and timeout.
+        Adding a live key here has to be a deliberate act that edits this
+        test.
+
+        Values are compared through to_bool because a ConfigObj stanza yields
+        strings where a plain dict yields bools, and airlink.py coerces on
+        read."""
         airlink = self.installer_config()['AirLink']
-        for name in ['Proxy1', 'Proxy2']:
+        # [AirLink] itself carries no scalars: there is no poll option here
+        # (the poll interval is hardcoded at 5 seconds).  .scalars is
+        # ConfigObj's list of a section's non-section keys, so these are
+        # complete sets, not spot checks.
+        self.assertEqual(airlink.scalars, [])
+        for name in self.SOURCE_SECTIONS:
             source = airlink[name]
-            self.assertFalse(weeutil.weeutil.to_bool(source['enable']), name)
-            self.assertEqual(weeutil.weeutil.to_int(source['port']), 8040, name)
-            # A proxy answers from its own database on the LAN; if it has not
-            # answered in a second it is down.
-            self.assertEqual(weeutil.weeutil.to_int(source['timeout']), 1, name)
+            self.assertEqual(sorted(source.scalars), ['enable', 'hostname'],
+                             name)
+            # Sensor1 is on so that a fresh install works with no proxy.
+            self.assertEqual(weeutil.weeutil.to_bool(source['enable']),
+                             name == 'Sensor1', name)
         self.assertEqual(airlink['Proxy1']['hostname'], 'proxy1')
         self.assertEqual(airlink['Proxy2']['hostname'], 'proxy2')
-        self.assertTrue(weeutil.weeutil.to_bool(airlink['Sensor1']['enable']))
-        self.assertFalse(weeutil.weeutil.to_bool(airlink['Sensor2']['enable']))
-        for name in ['Sensor1', 'Sensor2']:
-            source = airlink[name]
-            self.assertEqual(weeutil.weeutil.to_int(source['port']), 80, name)
-            self.assertEqual(weeutil.weeutil.to_int(source['timeout']), 2, name)
         self.assertEqual(airlink['Sensor1']['hostname'], 'airlink')
         self.assertEqual(airlink['Sensor2']['hostname'], 'airlink2')
+
+    def test_placeholder_hostnames_are_marked_as_placeholders(self):
+        """Every hostname carries a PLACEHOLDER -- comment.  Three kinds of
+        line share the stanza and the user has to tell them apart at a
+        glance: a commented-out assignment (the value the extension supplies,
+        uncomment only to pin it), a live setting that means what it says
+        (enable), and a live setting whose value is deliberately fake.  Only
+        the last kind breaks the extension if it is ignored, and it is the
+        one that looks most like a working setting -- 'hostname = proxy1' is
+        syntactically indistinguishable from a real answer.  The marker is
+        what the comment LEADS with rather than something buried at the end
+        of the prose.  weewx-purple and weewx-celestial mark theirs the same
+        way.
+
+        LEADS WITH is checked, not merely contains.  ConfigObj hands back
+        one block for the key, and that block opens with the commented-out
+        assignments and whatever prose introduces them -- so searching the
+        joined block would pass on
+        '# replace with the host name (PLACEHOLDER)', the very burying this
+        forbids.  The hostname's own prose is what follows the LAST
+        commented assignment in the block; its first line is what must
+        carry the marker."""
+        airlink = self.installer_config()['AirLink']
+        for name in self.SOURCE_SECTIONS:
+            # ConfigObj hands back the comment block attached to the key.
+            block = [line.strip()
+                     for line in airlink[name].comments['hostname']]
+            assignments = [i for i, line in enumerate(block)
+                           if self.COMMENTED_OPTION_RE.match(line)]
+            self.assertTrue(assignments,
+                            '%s: no commented assignment precedes hostname, '
+                            'so this test is reading the wrong block' % name)
+            prose = [line for line in block[assignments[-1] + 1:]
+                     if line.startswith('# ')]
+            self.assertTrue(prose, '%s: hostname carries no comment' % name)
+            self.assertIn('PLACEHOLDER', prose[0], name)
+
+    def test_commented_options_match_the_code_defaults(self):
+        """The drift guard.  A commented-out option shows the user the value
+        that will actually be used, so it must equal the fallback airlink.py
+        applies when the key is absent -- and nothing but airlink.py governs
+        it once the installer stops writing it live.
+
+        WHICH SIDE MOVES WHEN THIS FAILS IS A JUDGEMENT, NOT A FORMALITY.
+        Do not make it pass by editing the commented-out assignment to match
+        the code.  While the option was written live, the installer's value
+        is what every fresh install has actually been running and the code's
+        fallback was never reached, so editing the assignment down to the
+        fallback turns the test green while silently changing what new
+        stations get.  Moving the fallback to match the installer is usually
+        what preserves behavior; moving the assignment is a deliberate change
+        of default and belongs in changes.txt.  Existing stations are
+        unaffected either way -- their weewx.conf already carries the value
+        the installer wrote, and an upgrade never rewrites it.
+
+        This is how the sensor timeout was settled: install.py had shown 2
+        since the 2020 checkin while Source fell back to 10, so the fallback
+        moved to 2.  weewx-purple hit the same drift the other way round
+        (installer 15, fallback 10) and moved its fallback to 15."""
+        commented = self.commented_options()
+        for name in self.SOURCE_SECTIONS:
+            options = dict(commented[name])
+            source = Source({name: {}}, name, name.startswith('Proxy'))
+            self.assertEqual(weeutil.weeutil.to_int(options.pop('port')),
+                             source.port, name)
+            self.assertEqual(weeutil.weeutil.to_int(options.pop('timeout')),
+                             source.timeout, name)
+            # Anything else commented out here is a default nothing checks.
+            self.assertEqual(options, {}, name)
+        # And nothing is commented out anywhere else in the stanza.
+        self.assertEqual(sorted(commented), sorted(self.SOURCE_SECTIONS))
 
     def test_the_stanza_is_commented(self):
         """The point of building the stanza from weewx.conf text rather than a
@@ -2000,14 +2136,92 @@ class TestInstallerConfig(unittest.TestCase):
         self.assertTrue(config['AirLink']['Sensor1'].comments['hostname'],
                         'the hostname placeholder ships with no comment')
 
+    def test_merged_stanza_keeps_comments_in_their_own_section(self):
+        """The placement rule, checked through the real merge.  ConfigObj
+        attaches a comment block to the NEXT key, so a commented-out option
+        that is last in its section attaches to the section that follows and
+        is written out at the PARENT's indentation, where it reads as an
+        option of the parent rather than of the block it documents.  Every
+        source section therefore ends with a live key (hostname).  This
+        merges the stanza the way weectl does -- weeutil.config's
+        conditional_merge, which transfers comments along with the keys it
+        creates -- and checks that every commented-out assignment lands
+        indented with the section it belongs to."""
+        # A weewx.conf with no [AirLink] yet.  Parsed from text rather than
+        # built empty: ConfigObj takes its indent_type from what it read, and
+        # a config that was never read indents nothing at all.
+        merged = configobj.ConfigObj(io.StringIO(
+            '[Station]\n    location = home\n'))
+        weeutil.config.conditional_merge(merged, self.installer_config())
+        out = io.BytesIO()
+        merged.write(out)
+
+        depth = 0
+        seen = 0
+        for line in out.getvalue().decode('utf-8').splitlines():
+            header = self.SECTION_RE.match(line)
+            if header:
+                depth = len(header.group(1))
+                continue
+            option = self.COMMENTED_OPTION_RE.match(line)
+            if option:
+                seen += 1
+                self.assertEqual(len(option.group(1)), 4 * depth,
+                                 'wrong indentation, so it merged outside its '
+                                 'section: %r' % line)
+        # port and timeout in each of the four source sections.
+        self.assertEqual(seen, 2 * len(self.SOURCE_SECTIONS))
+
+    # '4.0.1 (in development)' or '4.0 08/28/2026' -- changes.txt's release
+    # headings, the only lines in the file shaped like one.
+    CHANGES_HEADING_RE = re.compile(
+        r'^(\d+(?:\.\d+)*)\s+(\(in development\)|\d\d/\d\d/\d{4})\s*$')
+
+    @classmethod
+    def top_changes_heading(cls):
+        """The version and date of the newest changes.txt heading."""
+        with open(os.path.join(cls.REPO_DIR, 'changes.txt'),
+                  encoding='utf-8') as f:
+            for line in f:
+                found = cls.CHANGES_HEADING_RE.match(line)
+                if found:
+                    return found.group(1), found.group(2)
+        raise AssertionError('changes.txt carries no release heading')
+
+    def test_changes_txt_heading_agrees_with_the_version(self):
+        """The fourth place a version number lives.  The lockstep test above
+        pins install.py, the module and skin.conf to EACH OTHER, so all three
+        can sit at the previous release while changes.txt already heads the
+        next one -- which is the normal state of a work tree and is fine
+        while the heading is undated.  What is not fine is DATING that
+        heading, which is how a release is declared, without bumping the
+        three: the extension would then log the old version and weectl would
+        report it for the new release, and nothing else would notice.
+
+        So the rule follows the date.  Dated heading: it must equal the
+        version.  '(in development)': it must be strictly AHEAD of the
+        version, since a heading that merely repeats the shipped number
+        documents nothing and would hide exactly the forgotten bump this
+        guards."""
+        heading, date = self.top_changes_heading()
+        version = self.install_module().AirLinkInstaller()['version']
+        as_ints = lambda v: tuple(int(part) for part in v.split('.'))
+        if date == '(in development)':
+            self.assertGreater(
+                as_ints(heading), as_ints(version),
+                'changes.txt heads %s in development, but install.py already '
+                'says %s -- date the heading or bump the version'
+                % (heading, version))
+        else:
+            self.assertEqual(
+                heading, version,
+                'changes.txt dated %s as released on %s, but install.py says '
+                '%s -- a release must bump all three version places'
+                % (heading, date, version))
+
     def test_the_version_is_in_lockstep(self):
         """install.py, the module and the skin all carry the version."""
-        importlib.import_module('weecfg.extension')
-        spec = importlib.util.spec_from_file_location(
-            'airlink_install_v', os.path.join(self.REPO_DIR, 'install.py'))
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        version = module.AirLinkInstaller()['version']
+        version = self.install_module().AirLinkInstaller()['version']
         self.assertEqual(version, user.airlink.WEEWX_AIRLINK_VERSION)
         skin_conf = os.path.join(self.REPO_DIR, 'skins', 'airlink', 'skin.conf')
         skin = configobj.ConfigObj(skin_conf)
@@ -2199,11 +2413,7 @@ class TestWeewxVersionFloor(unittest.TestCase):
         self.assertIn('weewx_version_at_least((4, 6))', source)
         self.assertIn('requires WeeWX 4.6 or later', source)
 
-        importlib.import_module('weecfg.extension')
-        spec = importlib.util.spec_from_file_location(
-            'airlink_install_floor', os.path.join(self.REPO_DIR, 'install.py'))
-        installer = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(installer)
+        installer = load_install_module('airlink_install_floor')
         for version in ['3.9.2', '4', '4.0.0', '4.5.1', '4.5.1a1']:
             with mock.patch.object(installer.weewx, '__version__', version):
                 self.assertFalse(

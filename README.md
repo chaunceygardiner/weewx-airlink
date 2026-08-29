@@ -210,27 +210,43 @@ If in doubt, skip it and query the AirLink sensor directly.
 [AirLink]
     [[Proxy1]]
         enable = false
+        # The port airlink-proxy listens on
+        #port = 8040
+        # http timeout (seconds)
+        #timeout = 1
+        # PLACEHOLDER -- replace with the host name or IP address of the
+        # machine running the first airlink-proxy
         hostname = proxy1
-        port = 8040
-        timeout = 1
     [[Sensor1]]
         enable = true
+        #port = 80
+        #timeout = 2
+        # PLACEHOLDER -- replace with the host name or IP address of the
+        # first sensor
         hostname = airlink
-        port = 80
-        timeout = 2
     [[Sensor2]]
         enable = false
+        #port = 80
+        #timeout = 2
         hostname = airlink2
-        port = 80
-        timeout = 2
 ```
+
+The options the install writes commented out are the ones weewx-airlink
+supplies for itself.  Leave one commented and the extension's own value
+governs, including a better one a later release might bring; uncomment it to
+pin this station to the value shown.  `hostname` is written live because
+there is nothing to fall back on -- it is the one you have to replace with
+your own.  `enable` is written live for a different reason: `Sensor1` ships
+enabled so that a fresh install works with no proxy, and that is not what an
+absent `enable` means.  Leave `enable` out of a section and that source is
+simply off.
 
 | Option     | Default          | Meaning                                |
 |------------|------------------|----------------------------------------|
 | `enable`   | false            | Whether this source is polled          |
 | `hostname` |                  | Hostname or IP address of the source   |
 | `port`     | 80 (proxy: 8040) | Port to connect on                     |
-| `timeout`  | 10 (proxy: 1)    | HTTP timeout (seconds)                 |
+| `timeout`  | 2 (proxy: 1)     | HTTP timeout (seconds)                 |
 
 `timeout` governs every request to that source -- the five-second polling
 that feeds loop packets as well as the archive-record filling described
@@ -246,7 +262,7 @@ is no limit on the number of either, but each kind's numbering must start at 1
 and be consecutive (a gap ends the scan).  The two kinds differ only in the
 defaults they pick for `port` and `timeout`: a proxy answers out of its own
 database and is expected to answer quickly, while an AirLink's own processor is
-slow and easily overwhelmed.
+slower and gets more room.
 
 On each polling round (every 5 seconds), sources are interrogated in order --
 all proxies, low numbers to high, and then all sensors -- and the first one

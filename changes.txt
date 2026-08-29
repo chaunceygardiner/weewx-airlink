@@ -1,6 +1,37 @@
 weewx-airlink change history
 ----------------------------
 
+4.0.1 (in development)
+----------------------
+- The options weewx-airlink has its own default for -- each source's port
+  and timeout -- are now written into weewx.conf COMMENTED OUT rather than
+  live.  Existing installations are untouched: an upgrade never rewrites an
+  existing weewx.conf, so whatever your [AirLink] section says today it goes
+  on saying.  On a fresh install the option is still visible with the value
+  it is set to, but it is the extension that supplies that value, so a
+  station that leaves it commented follows the default forward if a later
+  release improves it; uncommenting it pins the station to the value written
+  there.  What stays live is each source's enable and hostname -- the switch
+  and the placeholder you have to replace with your own -- and the
+  [StdReport] entries the report engine needs.  Each hostname's comment now
+  leads with PLACEHOLDER, so the one kind of line that breaks the extension
+  if you leave it alone says so first rather than last.
+- The sensor timeout the extension falls back on is now 2 seconds, not 10.
+  This corrects a disagreement, not a default: the installer has written
+  timeout = 2 into every fresh [[SensorN]] section since 2020, so 2 is what
+  installations have actually been running, while the 10 in the code was
+  only ever reached by a hand-written section that omits the option.  (The
+  3.0 note saying a sensor keeps "a ten second timeout" described the code,
+  not what any install was running.)  Now that the installer writes the
+  option commented out, the code's value is the one that governs, so it had
+  to be the one installs have been getting.  On upgrade this changes one
+  case: a [[SensorN]] you wrote by hand that carries no timeout line drops
+  from 10 seconds to 2.  If your sensor needs longer than that, add
+  timeout = 10 to the section and it is yours for good.
+- README and the user manual now show the stanza as it is actually written,
+  explain which options are commented out and why, and give 2 rather than 10
+  as the sensor timeout default.
+
 4.0 08/28/2026
 --------------
 - ACTION REQUIRED for installations running WeeWX older than 4.6: upgrade

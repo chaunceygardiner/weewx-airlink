@@ -51,7 +51,20 @@ Download the latest `weewx-airlink.zip` from the
 
 ## 4. Install it
 
-WeeWX 5:
+WeeWX 5, pip install (`weectl` lives in the virtual environment, so
+activate it first; yours may sit elsewhere, `~/weewx-venv` is the usual
+place):
+
+```
+source ~/weewx-venv/bin/activate
+weectl extension install weewx-airlink.zip
+```
+
+WeeWX 5, Debian or Red Hat package install (`weectl` is already on the
+path).  No `sudo`: that install put your account in the `weewx` group,
+which owns the files -- if you installed WeeWX in this same login
+session, log out and back in first so the group membership takes
+effect.
 
 ```
 weectl extension install weewx-airlink.zip

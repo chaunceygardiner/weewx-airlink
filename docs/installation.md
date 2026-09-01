@@ -70,10 +70,11 @@ effect.
 weectl extension install weewx-airlink.zip
 ```
 
-WeeWX 4 (adjust the path if WeeWX is not installed in `/home/weewx`):
+WeeWX 4 (on a setup.py install use the full path, e.g.
+`/home/weewx/bin/wee_extension`; a package install has it on the path):
 
 ```
-sudo /home/weewx/bin/wee_extension --install weewx-airlink.zip
+sudo wee_extension --install weewx-airlink.zip
 ```
 
 ## 5. Point it at your sensor

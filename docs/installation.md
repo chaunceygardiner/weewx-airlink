@@ -87,10 +87,14 @@ it so a source points at your sensor or proxy, then restart WeeWX.  See
 
 Wait for a reporting cycle, then browse to your WeeWX site with `/airlink`
 appended to the URL — for example `http://weewx-machine/weewx/airlink`.  The
-PM2.5 and AQI graphs fill in over time.
+page opens with the current AQI, its category and all three particulate
+sizes; the day's tiles and the hourly strip appear once the day has an
+archive record, and the period graphs fill in over time.
 
 If nothing appears, see [Troubleshooting](troubleshooting.md).
 
 {: .note }
 > Upgrading replaces the bundled skin in `skins/airlink/`.  If you have
-> customized it, save a copy first.
+> customized it, save a copy first.  4.1 rewrites the sample report's
+> template and every one of its lang files, so a customized `skins/airlink/`
+> is replaced wholesale rather than merged.

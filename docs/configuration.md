@@ -153,3 +153,70 @@ reaches the periods being filled.
 
 Any period nothing overlaps keeps its empty columns.  That is the honest
 answer, not a failure.
+
+## The sample report
+
+The install also enables an `[[AirLinkReport]]` entry under `[StdReport]`,
+rendered to `<HTML_ROOT>/airlink`.  It takes its heading and browser title
+from `[Station]` `location`, so it reads *Palo Alto, CA Air Quality* rather
+than naming this extension; a station that has set no location gets a plain
+*Air Quality*.  To render it in German, French, Dutch or Spanish, add a
+`lang` entry to its stanza — see
+[Translating the sample report](i18n.md):
+
+```
+[StdReport]
+    [[AirLinkReport]]
+        lang = de                # or fr, nl, or es
+```
+
+## Customizing the sample report
+
+**Put your changes in weewx.conf, not in `skins/airlink/`.**  WeeWX builds a
+report's settings by merging the skin's `lang/<lang>.conf`, then `skin.conf`
+over that, then weewx.conf — so anything under `[StdReport]`
+`[[AirLinkReport]]` wins, and it survives upgrades.  Editing `skin.conf`
+itself works until the next `weectl extension install`, which replaces the
+whole skin directory.
+
+These are the settings worth knowing about, with the values the skin ships:
+
+| Setting | Ships as | What it does |
+|---|---|---|
+| `[ImageGenerator]` `image_width` | 500 | Plot width in pixels |
+| `[ImageGenerator]` `image_height` | 230 | Plot height in pixels |
+| `[ImageGenerator]` `chart_line_colors` | `0xa37b36, ...` | Plot line colors.  Only the first is used — every plot here draws one line |
+| `[Units]` `[[StringFormats]]` `microgram_per_meter_cubed` | `%.1f` | Decimals on the page's PM1.0/PM2.5/PM10 readouts |
+| `lang` | `en` | Page language — see [Translating the sample report](i18n.md) |
+
+Wider plots, and PM readouts to two decimals:
+
+```
+[StdReport]
+    [[AirLinkReport]]
+        [[[ImageGenerator]]]
+            image_width = 760
+            image_height = 300
+        [[[Units]]]
+            [[[[StringFormats]]]]
+                microgram_per_meter_cubed = %.2f
+```
+
+Two things that surprise people:
+
+* **Plot colors are `0xBBGGRR`, not `0xRRGGBB`.**  This is WeeWX's
+  convention, not this extension's.  The shipped `0xa37b36` is the blue
+  `#367ba3` the page's tabs use; write `0x000080` expecting navy and you get
+  dark red.
+* **`microgram_per_meter_cubed` changes the page's readouts, not the
+  plots.**  The plot generator chooses its own axis labels, so the y axis
+  keeps its own number of decimals whatever you set here.
+
+Plots are PNG images, so a change to any of this appears as they
+regenerate — the day and week plots on the next report cycle, the year plot
+within a day.
+
+The AQI dial, the stat tiles and the hourly strip are drawn by the template
+itself (`skins/airlink/index.html.tmpl`) and styled by the `<style>` block
+in its `<head>`; changing those means editing the skin, and an upgrade will
+replace it.

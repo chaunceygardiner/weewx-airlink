@@ -39,6 +39,14 @@ remembered for as long as WeeWX runs.
 : Set the proxy's `archive-interval-secs` so it divides evenly into WeeWX's
 `archive_interval`, then restart WeeWX.
 
+## The sample report
+
+**The page shows the top card but no tiles or hourly strip.**
+: Those need at least one PM2.5 reading recorded for the current day.  They
+are absent between midnight and the first archive record, and stay absent for
+as long as the sensor has been unreachable since midnight; they reappear on
+the report cycle after a reading lands.
+
 ## Harnesses
 
 Smoke test the sanity checker, with no sensor needed:

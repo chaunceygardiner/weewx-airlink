@@ -74,22 +74,36 @@ queried directly keeps no history, so with no proxy configured nothing is
 asked and nothing is logged.  See
 [Filling in archive records](configuration.md#filling-in-archive-records-after-downtime).
 
-![AirLinkReport](https://raw.githubusercontent.com/chaunceygardiner/weewx-airlink/master/AirLinkReport.jpg)
+## The sample report
 
-A demo skin ships with the extension and is enabled by default; the page
-above is what it renders.
+A small sample report ships with the extension, enabled by default, at
+`<HTML_ROOT>/airlink`.  It is meant to be usable as it stands: it takes its
+heading and browser title from your `[Station]` `location`, so it reads
+*Palo Alto, CA Air Quality* rather than naming this extension.  It leads
+with the current AQI on a dial of the six [US EPA
+categories](fields.md#aqi-categories), the category it falls in and that
+category's health advice, and all three particulate
+sizes; then the day's peak, average and low, and a cell per hour for the
+last twenty-four, each colored by its category.  The four period plots are
+behind the Day/Week/Month/Year tabs at the foot of the page:
+
+![The sample report](https://raw.githubusercontent.com/chaunceygardiner/weewx-airlink/master/AirLinkReport.jpg)
+
+*Shown on 08/31/2026: 6 µg/m³ of PM2.5, an AQI of 33 — a clean day, and
+Good.  The other five colors on the dial are there for the days that are
+not.*
 
 The page is translatable, and German, French, Dutch and Spanish ship with
-it — see [Translating the demo page](i18n.md):
+it — see [Translating the sample report](i18n.md):
 
-![The demo page in German](https://raw.githubusercontent.com/chaunceygardiner/weewx-airlink/master/AirLinkReport-de.png)
+![The sample report in German](https://raw.githubusercontent.com/chaunceygardiner/weewx-airlink/master/AirLinkReport-de.png)
 
 ## Where to go next
 
 * [Installation](installation.md) — requirements and the install steps.
 * [Configuration](configuration.md) — sensors, proxies and gap filling.
 * [Fields in reports](fields.md) — every field, and how to use it in a template.
-* [Translating the demo page](i18n.md) — lang files, and the four that ship.
+* [Translating the sample report](i18n.md) — lang files, and the four that ship.
 * [Troubleshooting](troubleshooting.md) — log messages and the offline harnesses.
 
 ## Licensing

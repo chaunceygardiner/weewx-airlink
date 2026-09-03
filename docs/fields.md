@@ -68,12 +68,30 @@ $current.pm2_5_aqi
 $current.pm2_5_aqi_color
 ```
 
-Aggregates over a period behave normally:
+Aggregates over a period behave normally.  The xtype itself implements
+`avg`, `min`, `max`, `first`, `last` and `count`, and serves spans covering
+whole days out of the `pm2_5` daily summaries:
 
 ```
 $day.pm2_5.avg
 $day.pm2_5_aqi.max
 $week.pm2_5_aqi.avg
+```
+
+Ask for any other aggregate — `maxtime`, `mintime`, `sum` — and WeeWX falls
+through to its own generic handler, which walks the span record by record
+converting each one.  That does work, but it reads every archive row
+instead of the daily summaries, and it raises `UnknownAggregation` if any
+record in the span has a NULL `pm2_5` — which is exactly what an outage
+leaves behind.
+
+For the *time* of a peak, use `pm2_5` rather than the xtype.  AQI is a
+non-decreasing function of PM2.5, so the moment the AQI peaked is the
+moment `pm2_5` peaked, and `pm2_5` is a real column whose `maxtime` comes
+straight off the daily summary:
+
+```
+$day.pm2_5_aqi.max at $day.pm2_5.maxtime
 ```
 
 A plot is declared like any other observation:

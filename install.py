@@ -41,9 +41,9 @@ from weecfg.extension import ExtensionInstaller
 CONFIG = """
 [StdReport]
     [[AirLinkReport]]
-        # The "AirLinkReport" uses the "airlink" skin, which showcases the
-        # extension.  Images and files are placed in a dedicated
-        # subdirectory.
+        # The "AirLinkReport" uses the "airlink" skin: a small air quality
+        # report, ready to use as it stands.
+        # Images and files are placed in a dedicated subdirectory.
         HTML_ROOT = airlink
         enable = true
         skin = airlink
@@ -127,7 +127,7 @@ def weewx_version_at_least(minimum):
             if tuple(running) < minimum[:len(running)]:
                 return False
             # Otherwise accept: the cost of wrongly allowing an old WeeWX is
-            # a demo page that renders its own $gettext placeholders, while
+            # a sample report that renders its own $gettext placeholders, while
             # the cost of wrongly refusing a good one is weewxd dying at
             # import.
             return True
@@ -141,7 +141,7 @@ def loader():
     if sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 7):
         sys.exit("weewx-airlink requires Python 3.7 or later, found %s.%s" % (sys.version_info[0], sys.version_info[1]))
 
-    # 4.6 is where WeeWX gained $lang and $gettext, which the demo skin uses.
+    # 4.6 is where WeeWX gained $lang and $gettext, which the sample report uses.
     if not weewx_version_at_least((4, 6)):
         sys.exit("weewx-airlink requires WeeWX 4.6 or later, found %s" % weewx.__version__)
 
@@ -150,7 +150,7 @@ def loader():
 class AirLinkInstaller(ExtensionInstaller):
     def __init__(self):
         super(AirLinkInstaller, self).__init__(
-            version="4.0",
+            version="4.1",
             name='airlink',
             description='Record air quality as provided by a Davis AirLink sensor.',
             author="John A Kline",

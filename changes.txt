@@ -1,8 +1,57 @@
 weewx-airlink change history
 ----------------------------
 
-4.0.1 (in development)
-----------------------
+4.1 09/02/2026
+--------------
+- The sample report is now a page rather than a headline.  It opens with a
+  six-segment dial of the US EPA AQI categories, the category the current
+  reading falls in, that category's health sentence, and all three
+  particulate sizes -- pm1_0, pm2_5 and pm10_0 -- side by side; until now
+  the page showed one of the three and spent the AQI color on a line of
+  text.  Below it are the day's peak, average and low AQI (the peak with
+  the time it happened), a count of the hours above Good, and a strip of
+  the last 24 hours with one cell per hour colored by its category, so a
+  smoke day is legible at a glance.  The four period plots stay where they
+  were, in their own card behind the same Day/Week/Month/Year tabs.
+- The page wears your station's name.  Its heading and browser title are
+  now built from [Station] location in weewx.conf -- "Palo Alto, CA Air
+  Quality" rather than "WeeWX-AirLink Demo Page" -- because the report that
+  ships with an extension is the one most stations actually put on their
+  site, and it should not announce the extension to their visitors.  A
+  station that has set no location gets a plain "Air Quality".  The
+  location sits inside the translatable phrase rather than being glued to
+  it, so each language places it and its preposition where it belongs.
+- Twenty new translatable strings come with it -- the six category names,
+  their six health sentences, the card headings and the tile labels -- and
+  German, French, Dutch and Spanish translations of every one.  The sample
+  report's own dictionary, lang/en.conf, also gains labels for pm1_0 and
+  pm10_0, which the page now shows.
+- The plots are a little taller (image_height 180 -> 230) and are drawn in
+  the page's own blue rather than the stock tan.  Particulate readouts now
+  carry one decimal.  WeeWX's stock format for this unit is whole numbers,
+  which throws away the resolution that makes the three sizes worth showing
+  side by side: an archive record holds the average of a period's readings,
+  and that average is rarely a whole number.
+- The sample report's clock times now follow your own [Units] [[TimeFormats]]
+  setting.  The peak tile's time and the hourly strip's axis and tooltips
+  were hard-coded to 24-hour time regardless of what the rest of your site
+  used.  The skin sets the within-a-day format to %H:%M, which is what those
+  narrow labels need, and you can override it per report in weewx.conf like
+  any other skin setting.
+- A station whose [Station] location contains &, < or > no longer puts raw
+  markup into the page.  The heading and browser title are new in this
+  release, and they are the only place a user-written string reaches the
+  page; WeeWX's html_entities encoding transcodes accented characters but
+  does not escape markup, so a location such as "Bell & Howell Ranch" could
+  produce HTML that fails validation.
+- The README and the user manual describe the new page, both screenshots
+  were recaptured from it, and the manual now says which aggregates the AQI
+  xtype implements itself and which WeeWX serves generically -- with the
+  advice to read the time of a peak off pm2_5.maxtime rather than off the
+  xtype, since that comes straight from the daily summaries and does not
+  raise on a NULL record.  Customizing the report now has a section of its
+  own: which settings are worth knowing, and why they belong in weewx.conf
+  rather than in the skin.
 - The options weewx-airlink has its own default for -- each source's port
   and timeout -- are now written into weewx.conf COMMENTED OUT rather than
   live.  Existing installations are untouched: an upgrade never rewrites an

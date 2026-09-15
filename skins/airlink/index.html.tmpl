@@ -13,8 +13,15 @@
 #errorCatcher Echo
 #encoding UTF-8
 #from weewx.units import ValueHelper
+#import bisect
 #import html
 #import math
+##
+## Never read a #set variable inside a comprehension, generator expression or
+## lambda, except as a comprehension's first iterable.  Cheetah finds a
+## placeholder in the locals of the frame evaluating it, and those run in a
+## frame of their own -- comprehensions did until Python 3.12 -- so the
+## variable is not found and the page does not render.
 ##
 ## The category ceilings, lowest first.  The top category is open-ended
 ## (compute_pm2_5_aqi has no upper cap), so this list holds the five
@@ -170,7 +177,8 @@
 #if $current.pm2_5_aqi.has_data
 ##
 #set $aqi = int($current.pm2_5_aqi.raw)
-#set $idx = len([t for t in $aqi_tops if $aqi > t])
+## bisect_left counts the ceilings the reading is above: the category index.
+#set $idx = bisect.bisect_left($aqi_tops, $aqi)
 #set $rgbint = int($current.pm2_5_aqi_color.raw)
 #set $red   = ($rgbint >> 16) & 255
 #set $green = ($rgbint >>  8) & 255
@@ -250,9 +258,9 @@
 ## strip is not reachable in a hidden state.  Move these out only if that
 ## outer gate ever stops covering them.
 #if $day.pm2_5.has_data
-#set $peak_idx = len([t for t in $aqi_tops if int($day.pm2_5_aqi.max.raw) > t])
-#set $mean_idx = len([t for t in $aqi_tops if int($day.pm2_5_aqi.avg.raw) > t])
-#set $low_idx  = len([t for t in $aqi_tops if int($day.pm2_5_aqi.min.raw) > t])
+#set $peak_idx = bisect.bisect_left($aqi_tops, int($day.pm2_5_aqi.max.raw))
+#set $mean_idx = bisect.bisect_left($aqi_tops, int($day.pm2_5_aqi.avg.raw))
+#set $low_idx  = bisect.bisect_left($aqi_tops, int($day.pm2_5_aqi.min.raw))
 ## Every swatch is the xtype's own color for that aggregate: the max of
 ## pm2_5_aqi_color is the color of the day's highest pm2_5, and so on.
 #set $peak_swatch = '#%06x' % int($day.pm2_5_aqi_color.max.raw)
@@ -269,7 +277,12 @@
 #set $strip_aqis = $span($hour_delta=24).pm2_5_aqi.series(aggregate_type='avg', aggregate_interval=3600)
 #set $stops = $strip_colors.stop.raw
 #set $hourly = $strip_aqis.data.raw
-#set $above = len([v for v in $hourly if v is not None and v > $aqi_tops[0]])
+#set $above = 0
+#for $v in $hourly
+#if $v is not None and $v > $aqi_tops[0]
+#set $above = $above + 1
+#end if
+#end for
 ## Clock times go through WeeWX's own Formatter rather than strftime, so a
 ## station that has set [Units] [[TimeFormats]] gets its preference here too.
 ## $current.formatter is this report's formatter -- the same object behind

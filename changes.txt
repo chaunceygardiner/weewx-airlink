@@ -1,6 +1,13 @@
 weewx-airlink change history
 ----------------------------
 
+4.1.1 09/15/2026
+----------------
+- The sample report renders again on Python 3.11 and earlier, which
+  includes Debian bookworm.  Since 4.1 the page was not generated there, and
+  the log read "cannot find 'aqi_tops'" (weewx-purple issue #18; the two
+  extensions share the page).  The page itself is unchanged.
+
 4.1 09/02/2026
 --------------
 - The sample report is now a page rather than a headline.  It opens with a

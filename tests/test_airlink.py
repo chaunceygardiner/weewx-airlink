@@ -5,6 +5,7 @@
 fetch stack down is exercised with mocks, and the xtype SQL paths run
 against an in-memory SQLite database."""
 
+import ast
 import copy
 import datetime
 import importlib
@@ -13,13 +14,18 @@ import logging
 import os
 import re
 import sqlite3
+import sys
 import threading
 import time
 import types
 import unittest
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 from unittest import mock
+
+from Cheetah.Compiler import Compiler
+from Cheetah.NameMapper import NotFound
+from Cheetah.Template import Template
 
 import configobj
 
@@ -2489,6 +2495,85 @@ class TestSkinCategoryTable(unittest.TestCase):
         expected = ['#%06x' % AQI.compute_pm2_5_aqi_color(aqi)
                     for aqi in tops + [tops[-1] + 100]]
         self.assertEqual(strokes, expected)
+
+
+class TestSkinRendersOnEveryPython(unittest.TestCase):
+    """weewx-purple issue #18: the page did not render on Python 3.11 --
+    "cannot find 'aqi_tops'".  Cheetah compiles `$name` to a lookup in the
+    locals of the frame evaluating it.  A comprehension ran in a frame of its
+    own until Python 3.12 (PEP 709), and a generator expression or a lambda
+    still does, so a #set variable read inside one is not found.  From 3.12 on
+    the page renders either way, so rendering it here would not catch this;
+    the template is compiled instead, and the generated Python searched."""
+
+    TEMPLATE = TestSkinCategoryTable.TEMPLATE
+
+    @staticmethod
+    def nested_frame_lookups(source: str) -> List[str]:
+        """The #set variables `source` reads from inside a comprehension,
+        generator expression or lambda.  A comprehension's first iterable is
+        evaluated in the enclosing frame and so is not searched, and neither
+        are its own loop variables or a lambda's arguments.  A name nothing
+        assigns comes from the search list, which every frame reaches."""
+        tree = ast.parse(str(Compiler(source=source)))
+        assigned = {node.id for node in ast.walk(tree)
+                    if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)}
+        found = []
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
+                own = {name.id for gen in node.generators
+                       for name in ast.walk(gen.target) if isinstance(name, ast.Name)}
+                inner = ([node.key, node.value] if isinstance(node, ast.DictComp)
+                         else [node.elt])
+                inner += [cond for gen in node.generators for cond in gen.ifs]
+                inner += [gen.iter for gen in node.generators[1:]]
+            elif isinstance(node, ast.Lambda):
+                own = {arg.arg for arg in ast.walk(node.args) if isinstance(arg, ast.arg)}
+                inner = [node.body]
+            else:
+                continue
+            for part in inner:
+                for call in ast.walk(part):
+                    if (isinstance(call, ast.Call)
+                            and isinstance(call.func, ast.Name)
+                            and call.func.id in ('VFFSL', 'VFSL')
+                            and len(call.args) > 1
+                            and isinstance(call.args[1], ast.Constant)
+                            and isinstance(call.args[1].value, str)):
+                        name = call.args[1].value.split('.')[0]
+                        if name in assigned and name not in own:
+                            found.append(name)
+        return found
+
+    def test_the_page_reads_no_set_variable_from_a_nested_frame(self):
+        with open(self.TEMPLATE, encoding='utf-8') as f:
+            self.assertEqual(self.nested_frame_lookups(f.read()), [])
+
+    def test_the_search_agrees_with_cheetah(self):
+        """The oracle: an empty result above proves nothing unless the search
+        flags what fails.  Each case is also rendered, so the verdict is
+        Cheetah's own.  The comprehension fails only before 3.12; the
+        generator expression and the lambda fail on every Python, and so show
+        the search is right on this one."""
+        head = '#set $tops = [50, 100]\n#set $aqi = 75\n'
+        cases = [
+            ('$len([t for t in $tops if $aqi > t])', ['aqi'], sys.version_info >= (3, 12)),
+            ('$len(list(t for t in $tops if $aqi > t))', ['aqi'], False),
+            ('#set $f = lambda t: t > $aqi\n$f(1)', ['aqi'], False),
+            ('$len([$t for $t in $tops if $t > 60])', [], True),
+            ('$len(list(t for t in $tops if t > 60))', [], True),
+            ('$len(list(t for t in $tops if $day > t))', [], True),
+        ]
+        for body, flagged, renders in cases:
+            source = head + body + '\n'
+            with self.subTest(body=body):
+                self.assertEqual(self.nested_frame_lookups(source), flagged)
+                try:
+                    str(Template(source=source, searchList=[{'day': 60}]))
+                    rendered = True
+                except NotFound:
+                    rendered = False
+                self.assertEqual(rendered, renders)
 
 
 class TestSkinHeading(unittest.TestCase):

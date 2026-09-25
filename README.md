@@ -517,8 +517,8 @@ xtype:
   `enable = true` in `[AirLink]`.
 * `Found no fresh concentrations to insert.`: the sensor has stopped
   answering (or is answering with stale or insane readings).  Logged once
-  per outage; `Fresh concentrations available again.` is logged on
-  recovery.
+  per outage; `Fresh concentrations available again after 13 min.` is
+  logged on recovery, with how long the outage lasted.
 * `Reading not sane: ...`: the reason and the offending reading are
   included in the message.
 * **The sample report shows the top card but no tiles or hourly strip.**

@@ -151,7 +151,7 @@ def make_cfg(sources=None, archive_interval=300, concentrations=None):
     return Configuration(
         lock             = threading.Lock(),
         concentrations   = concentrations,
-        stale_logged     = False,
+        stale_since      = None,
         archive_interval = archive_interval,
         poll_interval    = 5,
         sources          = sources if sources is not None else [])
@@ -800,19 +800,26 @@ class TestFillInPacket(unittest.TestCase):
         AirLink.fill_in_packet(cfg, packet)
         self.assertEqual(packet, {})
 
-    def test_stale_logged_once_per_outage(self):
-        cfg = make_cfg(concentrations=fresh_concentrations(
-            timestamp=time.time() - 301))
-        AirLink.fill_in_packet(cfg, {})
-        self.assertTrue(cfg.stale_logged)
-        AirLink.fill_in_packet(cfg, {})
-        self.assertTrue(cfg.stale_logged)
-        # Fresh data again: flag resets and fields are inserted.
-        with cfg.lock:
-            cfg.concentrations = fresh_concentrations()
+    def test_an_outage_is_logged_once_each_way_with_its_length(self):
+        """ERROR when the readings go stale, nothing more while they stay
+        stale, INFO with how long it lasted when a fresh one arrives, so an
+        outage reads whole from the recovery line even when the ERROR line
+        is in an earlier log."""
+        clock = [1_000_000.0]
+        cfg = make_cfg(concentrations=fresh_concentrations(timestamp=clock[0] - 301))
         packet = {}
-        AirLink.fill_in_packet(cfg, packet)
-        self.assertFalse(cfg.stale_logged)
+        with mock.patch.object(user.airlink.time, 'time', lambda: clock[0]), \
+                self.assertLogs('user.airlink', level='INFO') as logs:
+            for _ in range(13):                 # stale a minute apart
+                AirLink.fill_in_packet(cfg, {})
+                clock[0] += 60
+            with cfg.lock:
+                cfg.concentrations = fresh_concentrations(timestamp=clock[0])
+            AirLink.fill_in_packet(cfg, packet)
+        self.assertEqual(logs.output, [
+            'ERROR:user.airlink:Found no fresh concentrations to insert.',
+            'INFO:user.airlink:Fresh concentrations available again after 13 min.'])
+        self.assertIsNone(cfg.stale_since)
         self.assertIn('pm2_5', packet)
 
 class TestAirLinkInit(unittest.TestCase):

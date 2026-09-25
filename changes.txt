@@ -1,6 +1,14 @@
 weewx-airlink change history
 ----------------------------
 
+4.1.2 (pending)
+---------------
+- When fresh concentrations arrive after an outage, the log line saying so
+  now says how long they were missing ("Fresh concentrations available again
+  after 13 min."), so an outage can be read whole from that one line,
+  even when the "Found no fresh concentrations to insert." line that
+  began it is in an earlier log.
+
 4.1.1 09/15/2026
 ----------------
 - The sample report renders again on Python 3.11 and earlier, which

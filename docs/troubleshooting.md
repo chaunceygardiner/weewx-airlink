@@ -15,7 +15,8 @@ description: What weewx-airlink's log messages mean, and the harnesses for diagn
 `Found no fresh concentrations to insert.`
 : The sensor has stopped answering, or is answering with stale or insane
 readings.  Logged once per outage, not once per loop packet;
-`Fresh concentrations available again.` is logged on recovery.
+`Fresh concentrations available again after 13 min.` is logged on recovery,
+with how long the outage lasted.
 
 `Reading not sane: ...`
 : A reading failed the sanity check.  The reason and the offending reading

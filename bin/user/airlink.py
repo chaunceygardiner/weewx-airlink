@@ -173,7 +173,7 @@ class Concentrations:
 class Configuration:
     lock            : threading.Lock
     concentrations  : Optional[Concentrations] # Controlled by lock
-    stale_logged    : bool                     # Controlled by lock
+    stale_since     : Optional[float]          # Controlled by lock; None while fresh
     archive_interval: int                      # Immutable
     poll_interval   : int                      # Immutable
     sources         : List[Source]             # Immutable
@@ -193,6 +193,13 @@ class Configuration:
     # can look unwatched.  The service sets it; None means fall back to
     # archive_interval, which is what the __main__ harness gets.
     injection_retention_secs: Optional[int] = None      # Immutable
+
+def outage_length(since: float, now: float) -> str:
+    """How long readings were stale, as the line saying they are fresh
+    again gives it: whole minutes, which a log reader can take as
+    `after (\\d+) min` to tell a blip from an outage."""
+    return '%d min' % round((now - since) / 60)
+
 
 def reraise_if_terminate(e: BaseException) -> None:
     """weewxd stops by raising Terminate from its SIGTERM signal handler --
@@ -662,7 +669,7 @@ class AirLink(StdService):
         self.cfg = Configuration(
             lock             = threading.Lock(),
             concentrations   = None,
-            stale_logged     = False,
+            stale_since      = None,
             archive_interval = int(config_dict['StdArchive']['archive_interval']),
             poll_interval    = 5,
             sources          = AirLink.configure_sources(self.config_dict))
@@ -701,7 +708,7 @@ class AirLink(StdService):
         # Latch for the nothing-to-fill message: a catchup burst dispatches
         # every record of an outage back to back, and a proxy that is refused
         # outright has already said why once.  Same convention as the
-        # stale-reading log (Configuration.stale_logged).
+        # stale-reading log (Configuration.stale_since).
         self.no_data_logged = False
 
         source_count = 0
@@ -748,9 +755,10 @@ class AirLink(StdService):
                     cfg.concentrations.timestamp is not None and \
                     cfg.concentrations.timestamp + \
                     cfg.archive_interval >= time.time():
-                if cfg.stale_logged:
-                    log.info('Fresh concentrations available again.')
-                    cfg.stale_logged = False
+                if cfg.stale_since is not None:
+                    log.info('Fresh concentrations available again after %s.'
+                             % outage_length(cfg.stale_since, time.time()))
+                    cfg.stale_since = None
                 log.debug('Time of reading being inserted: %s' % timestamp_to_string(cfg.concentrations.timestamp))
                 # Insert pm1_0, pm2_5, pm10_0, aqi and aqic into loop packet.
                 if cfg.concentrations.pm_1_last is not None:
@@ -797,10 +805,11 @@ class AirLink(StdService):
 
                 AirLink.record_injections(cfg, packet)
             else:
-                # Log at error level once per outage, not once per loop packet.
-                if not cfg.stale_logged:
+                # Log at error level once per outage, not once per loop
+                # packet; the line when it ends says how long it lasted.
+                if cfg.stale_since is None:
                     log.error('Found no fresh concentrations to insert.')
-                    cfg.stale_logged = True
+                    cfg.stale_since = time.time()
                 else:
                     log.debug('Found no fresh concentrations to insert.')
 
@@ -1405,7 +1414,7 @@ if __name__ == "__main__":
         cfg = Configuration(
             lock             = threading.Lock(),
             concentrations   = None,
-            stale_logged     = False,
+            stale_since      = None,
             archive_interval = 300,
             poll_interval    = 5,
             sources          = sources)

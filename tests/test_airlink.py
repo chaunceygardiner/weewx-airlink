@@ -2145,7 +2145,7 @@ class TestInstallerConfig(unittest.TestCase):
         fallback turns the test green while silently changing what new
         stations get.  Moving the fallback to match the installer is usually
         what preserves behavior; moving the assignment is a deliberate change
-        of default and belongs in changes.txt.  Existing stations are
+        of default and belongs in changes.md.  Existing stations are
         unaffected either way -- their weewx.conf already carries the value
         the installer wrote, and an upgrade never rewrites it.
 
@@ -2212,26 +2212,26 @@ class TestInstallerConfig(unittest.TestCase):
         # port and timeout in each of the four source sections.
         self.assertEqual(seen, 2 * len(self.SOURCE_SECTIONS))
 
-    # '4.0.1 (in development)' or '4.0 08/28/2026' -- changes.txt's release
-    # headings, the only lines in the file shaped like one.
+    # '## 4.0.1 (in development)' or '## 4.0 08/28/2026' -- changes.md's
+    # release headings, the only lines in the file shaped like one.
     CHANGES_HEADING_RE = re.compile(
-        r'^(\d+(?:\.\d+)*)\s+(\(in development\)|\d\d/\d\d/\d{4})\s*$')
+        r'^## (\d+(?:\.\d+)*)\s+(\(in development\)|\d\d/\d\d/\d{4})\s*$')
 
     @classmethod
     def top_changes_heading(cls):
-        """The version and date of the newest changes.txt heading."""
-        with open(os.path.join(cls.REPO_DIR, 'changes.txt'),
+        """The version and date of the newest changes.md heading."""
+        with open(os.path.join(cls.REPO_DIR, 'changes.md'),
                   encoding='utf-8') as f:
             for line in f:
                 found = cls.CHANGES_HEADING_RE.match(line)
                 if found:
                     return found.group(1), found.group(2)
-        raise AssertionError('changes.txt carries no release heading')
+        raise AssertionError('changes.md carries no release heading')
 
-    def test_changes_txt_heading_agrees_with_the_version(self):
+    def test_changes_md_heading_agrees_with_the_version(self):
         """The fourth place a version number lives.  The lockstep test above
         pins install.py, the module and skin.conf to EACH OTHER, so all three
-        can sit at the previous release while changes.txt already heads the
+        can sit at the previous release while changes.md already heads the
         next one -- which is the normal state of a work tree and is fine
         while the heading is undated.  What is not fine is DATING that
         heading, which is how a release is declared, without bumping the
@@ -2249,13 +2249,13 @@ class TestInstallerConfig(unittest.TestCase):
         if date == '(in development)':
             self.assertGreater(
                 as_ints(heading), as_ints(version),
-                'changes.txt heads %s in development, but install.py already '
+                'changes.md heads %s in development, but install.py already '
                 'says %s -- date the heading or bump the version'
                 % (heading, version))
         else:
             self.assertEqual(
                 heading, version,
-                'changes.txt dated %s as released on %s, but install.py says '
+                'changes.md dated %s as released on %s, but install.py says '
                 '%s -- a release must bump all three version places'
                 % (heading, date, version))
 

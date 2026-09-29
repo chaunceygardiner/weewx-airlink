@@ -1,23 +1,21 @@
-weewx-airlink change history
-----------------------------
+# weewx-airlink change history
 
-4.1.2 (pending)
----------------
+## 4.1.2 (pending)
 - When fresh concentrations arrive after an outage, the log line saying so
   now says how long they were missing ("Fresh concentrations available again
   after 13 min."), so an outage can be read whole from that one line,
   even when the "Found no fresh concentrations to insert." line that
   began it is in an earlier log.
+- Internal: the change history is now changes.md, in Markdown, so it
+  reads as formatted text on GitHub; it was changes.txt.
 
-4.1.1 09/15/2026
-----------------
+## 4.1.1 09/15/2026
 - The sample report renders again on Python 3.11 and earlier, which
   includes Debian bookworm.  Since 4.1 the page was not generated there, and
   the log read "cannot find 'aqi_tops'" (weewx-purple issue #18; the two
   extensions share the page).  The page itself is unchanged.
 
-4.1 09/02/2026
---------------
+## 4.1 09/02/2026
 - The sample report is now a page rather than a headline.  It opens with a
   six-segment dial of the US EPA AQI categories, the category the current
   reading falls in, that category's health sentence, and all three
@@ -96,8 +94,7 @@ weewx-airlink change history
   explain which options are commented out and why, and give 2 rather than 10
   as the sensor timeout default.
 
-4.0 08/28/2026
---------------
+## 4.0 08/28/2026
 - ACTION REQUIRED for installations running WeeWX older than 4.6: upgrade
   WeeWX first.  This release requires WeeWX 4.6 or later, up from WeeWX 4.
   4.6 (February 2022) is the release that introduced lang and $gettext,
@@ -112,14 +109,14 @@ weewx-airlink change history
   [Texts] key (the English string IS the key, and a report falls back
   to English one string at a time, so a partial translation is fine),
   or an observation label ([Labels] [[Generic]]), both supplied by
-  lang/<lang>.conf.  (The " AQI" and " RGB" unit labels are not
+  `lang/<lang>.conf`.  (The " AQI" and " RGB" unit labels are not
   translatable per report: this extension registers them in WeeWX's
   process-global unit label dictionary, which wins over any skin or
   lang setting.  Both are acronyms in every language anyway.)  The
   skin ships lang/en.conf, the reference dictionary:
   a test now fails if a rendered string is missing from it, or if it
   carries a string nothing renders.  Set the language per report with
-  lang = <code> in weewx.conf ([StdReport] [[AirLinkReport]]).
+  `lang = <code>` in weewx.conf ([StdReport] [[AirLinkReport]]).
 - German, French, Dutch and Spanish ship with the skin: lang/de.conf,
   fr.conf, nl.conf and es.conf are complete translations of the
   dictionary (a test keeps each complete, so new strings cannot ship
@@ -133,7 +130,7 @@ weewx-airlink change history
 - The pm2_5 label (the concentration plots' title) is now the standard
   short form PM2.5 -- PM2,5 in the translations, per European agency
   usage -- replacing "Concentration of Particles < 2.5 Micrometers".
-- The demo page's <img> tags no longer carry a stray $graph_width.  The
+- The demo page's `<img>` tags no longer carry a stray $graph_width.  The
   skin defines no such variable, so with #errorCatcher Echo the name was
   rendered into the page verbatim, as an attribute no browser knows and
   the W3C validator rejects (eight errors on every rendering of the
@@ -144,8 +141,7 @@ weewx-airlink change history
 - The user manual now covers translating the demo page:
   https://chaunceygardiner.github.io/weewx-airlink/i18n.html
 
-3.0 08/27/2026
---------------
+## 3.0 08/27/2026
 - Archive records for periods WeeWX was down for are now filled in from an
   airlink-proxy's archive history, so a restart no longer leaves a permanent
   hole in pm1_0/pm2_5/pm10_0.  Requires a [[ProxyN]] source running
@@ -195,8 +191,7 @@ weewx-airlink change history
 - Insane readings are now logged as warnings (were logged as info).
 - Clean mypy pass.
 
-2.0.1 07/19/2026
-----------------
+## 2.0.1 07/19/2026
 Action required: none for typical installs.  Only if you added a
 pm2_5_aqi/pm2_5_aqi_color column to your database schema, see below.
 
@@ -214,15 +209,18 @@ pm2_5_aqi/pm2_5_aqi_color column to your database schema, see below.
 - If you added an AQI column to your database schema (not suggested by
   this extension's README, but possible), the accumulator no longer fills
   it.  Add to weewx.conf:
-      [StdWXCalculate]
-          [[Calculations]]
-              pm2_5_aqi = prefer_hardware
-              pm2_5_aqi_color = prefer_hardware
+
+  ```
+  [StdWXCalculate]
+      [[Calculations]]
+          pm2_5_aqi = prefer_hardware
+          pm2_5_aqi_color = prefer_hardware
+  ```
+
   This computes the stored values through the AQI xtype -- correctly
   EPA-rounded, unlike the averaged values stored before this release.
 
-2.0 07/18/2026
---------------
+## 2.0 07/18/2026
 Action required: none for typical installs.  If a report used
 $span.pm2_5_aqi.sum, remove it (see below).
 
@@ -272,32 +270,31 @@ $span.pm2_5_aqi.sum, remove it (see below).
 - README rewritten.  (Also: this extension does not use python-dateutil;
   the old install instructions required it unnecessarily.)
 
-1.4 05/30/2024
+## 1.4 05/30/2024
 Fix broken install.
 
-1.3 10/07/2022
+## 1.3 10/07/2022
 When computing AQI, round to nearest integer (rather than truncate).
 
-1.2 06/25/2022
+## 1.2 06/25/2022
 Remove EPA correction.  The EPA correction is meant for PurpleAir.  It needs PM2.5 CF1 readings,
 but the Airlink only provides PM2.5 ATM readings.  Hence forth, this Airlink extension will
 report Airlink readings with no correction.
 
-1.1 08/27/2021
+## 1.1 08/27/2021
 Switch to 2021 version of US EPA Correction
 See: https://www.epa.gov/sites/default/files/2021-05/documents/toolsresourceswebinar_purpleairsmoke_210519b.pdf
 Provide more guidance on applicability of Purple Air's EPA correction to the AirLink sensor.
 
-1.0.2 03/23/2021
+## 1.0.2 03/23/2021
 Fix broken labels for aqi and aqi_color observations.  Thanks to ArendPWS for this fix.
 
-1.0.1 12/02/2020
+## 1.0.1 12/02/2020
 Minor changes in dealing with when a PM2.5 value is not availble.
 Installer and extension of 1.0 release incorrectly listed version as 0.2.
 Minor code cleanup.
 
-1.0 10/31/2020
---------------
+## 1.0 10/31/2020
 Switch to US EPA correction for PM2.5.  This correction is
 always applied.  The US EPA correction is meant for PurpleAir sensors;
 however--in a sample size of 1, AirLink tracks well to PurpleAir sensors.
@@ -322,6 +319,5 @@ one off from the correct category 100% of the time.  This was
 true for all regions in the study (throughout the USA) and for
 all conditions (including wildfire smoke).
 
-0.1 09/26/2020
---------------
+## 0.1 09/26/2020
 Initial check-in.
